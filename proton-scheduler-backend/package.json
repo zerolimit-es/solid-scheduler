@@ -1,0 +1,49 @@
+{
+  "name": "proton-scheduler-backend",
+  "version": "1.0.0",
+  "description": "A Calendly-like scheduling app built on Solid/Inrupt for privacy-first calendar management with Proton",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test src/**/*.test.js"
+  },
+  "keywords": [
+    "solid",
+    "inrupt",
+    "calendar",
+    "scheduling",
+    "proton",
+    "privacy",
+    "decentralized"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@inrupt/solid-client": "^2.1.0",
+    "@inrupt/solid-client-authn-node": "^2.2.0",
+    "@inrupt/vocab-common-rdf": "^1.0.5",
+    "@simplewebauthn/server": "^13.3.0",
+    "@zerolimit/packages": "git+ssh://git@github.com/Beatsandhooks/packages.git",
+    "better-sqlite3-multiple-ciphers": "^12.6.2",
+    "cookie-session": "^2.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.2.1",
+    "express-session": "^1.19.0",
+    "helmet": "^8.1.0",
+    "ical-generator": "^8.0.0",
+    "ioredis": "^5.10.0",
+    "nodemailer": "^8.0.1",
+    "uuid": "^10.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

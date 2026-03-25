@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/* ─── Brand Design Tokens (Tailwind v4) ──────────────────────────────
+   These @theme values generate native utility classes:
+     bg-brand-primary, text-brand-light, from-brand-dark, border-brand-accent, etc.
+   "inline" = extend defaults (don't replace red-500, blue-500, etc.)
+────────────────────────────────────────────────────────────────────── */
+@theme inline {
+  /* ── Brand Colors ───────────────────────────────────────────────── */
+  --color-brand-primary:    #219EBC;
+  --color-brand-dark:       #023047;
+  --color-brand-light:      #8ECAE6;
+  --color-brand-accent:     #FFB703;
+  --color-brand-accent-2:   #FB8500;
+
+  /* ── User Branding (public booking page) ────────────────────── */
+  --color-user-primary:  var(--user-primary, #219EBC);
+  --color-user-dark:     var(--user-primary, #023047);
+  --color-user-light:    var(--user-accent, #8ECAE6);
+  --color-user-accent:   var(--user-accent, #FFB703);
+
+  /* ── Semantic Status Colors ────────────────────────────────────── */
+  --color-status-success:      #22c55e;
+  --color-status-success-light:#4ADE80;
+  --color-status-warning:      #f59e0b;
+  --color-status-error:        #ef4444;
+  --color-status-error-dark:   #dc2626;
+  --color-status-business:     #1B8A5A;
+  --color-status-muted:        #475569;
+  --color-status-coming-soon:  #7B8794;
+
+  /* ── Font Families ──────────────────────────────────────────────── */
+  --font-sans:     'Geist', 'DM Sans', sans-serif;
+  --font-serif:    'Newsreader', Georgia, serif;
+  --font-display:  'Fraunces', Georgia, serif;
+  --font-mono:     'JetBrains Mono', 'Space Mono', monospace;
+
+  /* ── Shadows ────────────────────────────────────────────────────── */
+  --shadow-brand-sm:     0 2px 8px rgba(2,48,71,0.25);
+  --shadow-brand-md:     0 4px 16px rgba(2,48,71,0.35);
+  --shadow-brand-lg:     0 8px 32px rgba(2,48,71,0.45);
+  --shadow-glow-primary: 0 0 20px rgba(33,158,188,0.25);
+  --shadow-glow-accent:  0 0 20px rgba(255,183,3,0.20);
+  --shadow-glow-dark:    0 0 30px rgba(2,48,71,0.45);
+
+  /* ── Animations ─────────────────────────────────────────────────── */
+  --animate-fade-up:   fadeUp 0.5s ease-out;
+  --animate-fade-in:   fadeIn 0.3s ease;
+  --animate-spin-slow: spin 0.8s linear infinite;
+}
+
+@keyframes fadeUp {
+  0%   { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}

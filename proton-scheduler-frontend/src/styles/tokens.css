@@ -1,0 +1,255 @@
+/*
+ * tokens.css — Design Tokens
+ *
+ * Brand palette (Ocean Blue system):
+ *   --brand-primary  #219EBC  Ocean Blue
+ *   --brand-dark     #023047  Deep Navy
+ *   --brand-light    #8ECAE6  Sky Blue
+ *   --brand-accent   #FFB703  Solar Yellow
+ *   --brand-accent-2 #FB8500  Ember Orange
+ *
+ * Semantic aliases:
+ *   --color-primary-*    → primary brand scale (Ocean Blue)
+ *   --color-secondary-*  → secondary brand scale (Sky Blue)
+ *   --color-accent-*     → accent scale (Solar Yellow / Ember Orange)
+ */
+
+:root {
+  /* ── Brand Primitives ──────────────────────────────────────────────── */
+  --brand-primary:   #219EBC;
+  --brand-dark:      #023047;
+  --brand-light:     #8ECAE6;
+  --brand-accent:    #FFB703;
+  --brand-accent-2:  #FB8500;
+
+  /* ── Semantic Color Scale ───────────────────────────────────────────
+     --color-primary-*    → Ocean Blue scale (actions, links, focus)
+     --color-secondary-*  → Sky Blue scale (status, accents, highlights)
+  ─────────────────────────────────────────────────────────────────── */
+  --color-primary:        #219EBC;
+  --color-primary-light:  #8ECAE6;
+  --color-primary-dark:   #023047;
+  --color-primary-rgb:    33, 158, 188;
+
+  --color-secondary:          #8ECAE6;
+  --color-secondary-light:    #A8D8EA;
+  --color-secondary-dark:     #219EBC;
+  --color-secondary-rgb:      142, 202, 230;
+
+  /* Accent retains semantic orange/amber role */
+  --color-accent:        #FFB703;
+  --color-accent-rgb:    255, 183, 3;
+  --color-accent-2:      #FB8500;
+  --color-accent-2-rgb:  251, 133, 0;
+
+  /* ── Background Scale (dark-mode defaults) ───────────────────────── */
+  --color-bg-primary:   #040F1A;
+  --color-bg-secondary: #071828;
+  --color-bg-card:      #0A1E2E;
+  --color-bg-elevated:  #0D2438;
+  --color-bg-input:     rgba(2, 48, 71, 0.30);
+  --color-bg-hover:     rgba(33, 158, 188, 0.08);
+
+  /* ── Border ──────────────────────────────────────────────────────── */
+  --color-border:        rgba(142, 202, 230, 0.10);
+  --color-border-light:  rgba(142, 202, 230, 0.05);
+  --color-border-focus:  #219EBC;
+
+  /* ── Text ────────────────────────────────────────────────────────── */
+  --color-text-primary:   #E8F4FA;
+  --color-text-secondary: rgba(232, 244, 250, 0.70);
+  --color-text-muted:     rgba(142, 202, 230, 0.55);
+  --color-text-disabled:  rgba(142, 202, 230, 0.30);
+
+  /* ── Semantic States ─────────────────────────────────────────────── */
+  --color-success:       #22c55e;
+  --color-success-light: #4ADE80;
+  --color-warning:       #f59e0b;
+  --color-error:         #ef4444;
+  --color-error-dark:    #dc2626;
+  --color-info:          #219EBC;
+  --color-business:      #1B8A5A;
+  --color-muted-gray:    #475569;
+  --color-coming-soon:   #7B8794;
+
+  /* ── Gradients ───────────────────────────────────────────────────── */
+  --gradient-brand:    linear-gradient(135deg, #219EBC, #8ECAE6);
+  --gradient-primary:   linear-gradient(135deg, #219EBC, #023047);
+  --gradient-dark:     linear-gradient(135deg, #023047, #040F1A);
+  --gradient-accent:   linear-gradient(135deg, #FFB703, #FB8500);
+  --gradient-card:     linear-gradient(135deg, rgba(33,158,188,0.06), rgba(142,202,230,0.02));
+
+  /* ── Spacing ─────────────────────────────────────────────────────── */
+  --space-xs:   4px;
+  --space-sm:   8px;
+  --space-md:   12px;
+  --space-lg:   16px;
+  --space-xl:   24px;
+  --space-2xl:  32px;
+  --space-3xl:  48px;
+
+  /* ── Border Radius ───────────────────────────────────────────────── */
+  --radius-sm:   8px;
+  --radius-md:   10px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
+
+  /* ── Typography ──────────────────────────────────────────────────── */
+  --font-family:    'Geist', 'DM Sans', -apple-system, sans-serif;
+  --font-size-xs:   11px;
+  --font-size-sm:   13px;
+  --font-size-base: 14px;
+  --font-size-md:   15px;
+  --font-size-lg:   18px;
+  --font-size-xl:   22px;
+  --font-size-2xl:  28px;
+
+  /* ── Shadows ─────────────────────────────────────────────────────── */
+  --shadow-sm: 0 2px 8px rgba(2,48,71,0.25);
+  --shadow-md: 0 4px 16px rgba(2,48,71,0.35);
+  --shadow-lg: 0 8px 32px rgba(2,48,71,0.45);
+  --shadow-glow-primary: 0 0 20px rgba(33,158,188,0.20);
+  --shadow-glow-secondary:   0 0 20px rgba(142,202,230,0.15);
+
+  /* ── Transitions ─────────────────────────────────────────────────── */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+
+  /* ── Z-Index ─────────────────────────────────────────────────────── */
+  --z-dropdown: 50;
+  --z-modal:    100;
+  --z-toast:    200;
+
+  /* ── Theme-sensitive aliases — DARK MODE DEFAULTS ───────────────── */
+  --theme-bg-gradient:    linear-gradient(135deg, #040F1A 0%, #071828 50%, #0A1E2E 100%);
+  --theme-bg-radial-1:    rgba(33, 158, 188, 0.08);
+  --theme-bg-radial-2:    rgba(142, 202, 230, 0.05);
+  --theme-grain-opacity:  0.025;
+  --theme-card-bg:        rgba(2, 48, 71, 0.28);
+  --theme-card-border:    rgba(142, 202, 230, 0.10);
+  --theme-input-bg:       rgba(2, 48, 71, 0.40);
+  --theme-input-border:   rgba(142, 202, 230, 0.15);
+  --theme-input-color:    #E8F4FA;
+  --theme-text-body:      #D4EAF5;
+  --theme-text-muted:     rgba(142, 202, 230, 0.55);
+  --theme-text-disabled:  rgba(142, 202, 230, 0.30);
+  --theme-text-more-disabled: rgba(142, 202, 230, 0.18);
+  --theme-nav-bg:         rgba(2, 48, 71, 0.35);
+  --theme-nav-border:     rgba(142, 202, 230, 0.10);
+  --theme-nav-active-bg:  rgba(33, 158, 188, 0.18);
+  --theme-nav-active-color: #8ECAE6;
+  --theme-dropdown-bg:    #0A1E2E;
+  --theme-dropdown-border: rgba(142, 202, 230, 0.15);
+  --theme-logout-bg:      rgba(142, 202, 230, 0.06);
+  --theme-logout-border:  rgba(142, 202, 230, 0.12);
+  --theme-logout-color:   rgba(142, 202, 230, 0.50);
+  --theme-select-bg:      rgba(2, 48, 71, 0.40);
+  --theme-select-border:  rgba(142, 202, 230, 0.15);
+  --theme-select-color:   #D4EAF5;
+  --theme-select-option-bg: #0A1E2E;
+  --theme-booking-link-bg: rgba(2, 48, 71, 0.40);
+  --theme-header-border:   rgba(142, 202, 230, 0.10);
+  --theme-scrollbar-thumb: rgba(142, 202, 230, 0.15);
+  --theme-user-name-color: rgba(232, 244, 250, 0.70);
+  --theme-settings-tab-color: rgba(142, 202, 230, 0.45);
+  --theme-settings-tab-hover: rgba(232, 244, 250, 0.75);
+  --theme-section-border:  rgba(142, 202, 230, 0.08);
+
+  /* ── User Branding Layer (defaults to ProtonScheduler) ────────────────
+     These are the ONLY variables that branding.js sets.
+     Public booking page components consume --user-* so ProtonScheduler's own
+     --brand-* / --color-primary remain untouched.
+  ────────────────────────────────────────────────────────────────────── */
+  --user-primary:      var(--color-primary);
+  --user-primary-rgb:  var(--color-primary-rgb);
+  --user-accent:       var(--color-secondary);
+  --user-accent-rgb:   var(--color-secondary-rgb);
+  --user-bg:           var(--color-bg-primary);
+  --user-text:         var(--color-text-primary);
+  --user-text-rgb:     232, 244, 250;
+
+  /* Derived user theme tokens */
+  --user-card-bg:      var(--theme-card-bg);
+  --user-card-border:  var(--theme-card-border);
+  --user-input-bg:     var(--theme-input-bg);
+  --user-input-border: var(--theme-input-border);
+  --user-text-muted:   var(--theme-text-muted);
+  --user-text-disabled:var(--theme-text-disabled);
+  --user-border:       var(--color-border);
+  --user-gradient:     var(--theme-bg-gradient);
+}
+
+/* ── Light Theme ─────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --color-bg-primary:   #F0F7FA;
+  --color-bg-secondary: #FFFFFF;
+  --color-bg-card:      #FFFFFF;
+  --color-bg-elevated:  #EBF4FA;
+  --color-bg-input:     rgba(2, 48, 71, 0.04);
+  --color-bg-hover:     rgba(33, 158, 188, 0.06);
+  --color-border:       rgba(2, 48, 71, 0.10);
+  --color-border-light: rgba(2, 48, 71, 0.05);
+  --color-text-primary:   #0D1B24;
+  --color-text-secondary: rgba(2, 48, 71, 0.75);
+  --color-text-muted:     #5A7A8A;
+  --color-text-disabled:  rgba(2, 48, 71, 0.30);
+  --color-success:  #219EBC;
+  --shadow-sm: 0 2px 8px rgba(2,48,71,0.07);
+  --shadow-md: 0 4px 16px rgba(2,48,71,0.10);
+  --shadow-lg: 0 8px 32px rgba(2,48,71,0.14);
+  --shadow-glow-primary: 0 0 20px rgba(33,158,188,0.15);
+  --shadow-glow-secondary:   0 0 20px rgba(142,202,230,0.12);
+
+  --theme-bg-gradient:   linear-gradient(135deg, #EBF5FA 0%, #E4F1F8 50%, #EBF5FA 100%);
+  --theme-bg-radial-1:   rgba(33, 158, 188, 0.06);
+  --theme-bg-radial-2:   rgba(142, 202, 230, 0.04);
+  --theme-grain-opacity: 0.012;
+  --theme-card-bg:       rgba(255, 255, 255, 0.88);
+  --theme-card-border:   rgba(2, 48, 71, 0.09);
+  --theme-input-bg:      rgba(255, 255, 255, 0.95);
+  --theme-input-border:  rgba(2, 48, 71, 0.12);
+  --theme-input-color:   #0D1B24;
+  --theme-text-body:     #0D1B24;
+  --theme-text-muted:    #5A7A8A;
+  --theme-text-disabled: #8AABB8;
+  --theme-text-more-disabled: #B8CDD5;
+  --theme-nav-bg:         rgba(2, 48, 71, 0.04);
+  --theme-nav-border:     rgba(2, 48, 71, 0.08);
+  --theme-nav-active-bg:  rgba(33, 158, 188, 0.12);
+  --theme-nav-active-color: #0e6a84;
+  --theme-dropdown-bg:    #FFFFFF;
+  --theme-dropdown-border: rgba(2, 48, 71, 0.12);
+  --theme-logout-bg:      rgba(2, 48, 71, 0.05);
+  --theme-logout-border:  rgba(2, 48, 71, 0.10);
+  --theme-logout-color:   #5A7A8A;
+  --theme-select-bg:      rgba(2, 48, 71, 0.04);
+  --theme-select-border:  rgba(2, 48, 71, 0.12);
+  --theme-select-color:   #0D1B24;
+  --theme-select-option-bg: #FFFFFF;
+  --theme-booking-link-bg: rgba(2, 48, 71, 0.04);
+  --theme-header-border:   rgba(2, 48, 71, 0.08);
+  --theme-scrollbar-thumb: rgba(2, 48, 71, 0.15);
+  --theme-user-name-color: rgba(2, 48, 71, 0.70);
+  --theme-settings-tab-color: rgba(2, 48, 71, 0.40);
+  --theme-settings-tab-hover: rgba(2, 48, 71, 0.75);
+  --theme-section-border:  rgba(2, 48, 71, 0.07);
+
+  /* ── User Branding — light-mode fallbacks ──────────────────────────── */
+  --user-primary:      var(--color-primary);
+  --user-primary-rgb:  var(--color-primary-rgb);
+  --user-accent:       var(--color-secondary);
+  --user-accent-rgb:   var(--color-secondary-rgb);
+  --user-bg:           var(--color-bg-primary);
+  --user-text:         var(--color-text-primary);
+  --user-text-rgb:     13, 27, 36;
+  --user-card-bg:      var(--theme-card-bg);
+  --user-card-border:  var(--theme-card-border);
+  --user-input-bg:     var(--theme-input-bg);
+  --user-input-border: var(--theme-input-border);
+  --user-text-muted:   var(--theme-text-muted);
+  --user-text-disabled:var(--theme-text-disabled);
+  --user-border:       var(--color-border);
+  --user-gradient:     var(--theme-bg-gradient);
+}

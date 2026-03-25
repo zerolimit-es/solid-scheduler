@@ -1,0 +1,30 @@
+services:
+  backend:
+    dns: [8.8.8.8, 1.1.1.1]
+    build:
+      context: ./proton-scheduler-backend
+      args:
+        GIT_AUTH_TOKEN: ${GIT_AUTH_TOKEN:-}
+    container_name: protonscheduler-dev-backend
+    restart: unless-stopped
+    env_file: .env
+    ports: ["3001:3001"]
+    volumes:
+      - ./proton-scheduler-backend/src:/app/src:ro
+      - dev-data:/data
+    depends_on: [redis]
+    networks: [dev]
+    environment:
+      - NODE_ENV=development
+  redis:
+    image: redis:7-alpine
+    container_name: protonscheduler-dev-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    volumes: [dev-redis:/data]
+    networks: [dev]
+volumes:
+  dev-data:
+  dev-redis:
+networks:
+  dev:

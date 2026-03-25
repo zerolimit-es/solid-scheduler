@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment (contains secrets!)
+.env
+.env.*
+!.env.example
+
+# Database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+
+# Build output
+proton-scheduler-frontend/dist/
+staging-dist/
+
+# Deploy state
+.deploy-state
+
+# Backups
+backups/
+*.backup
+
+# SSL keys
+*.pem
+*.key
+scaleway.ini
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+.claude/
+packages/
