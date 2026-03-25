@@ -26,10 +26,10 @@ const ORGANIZER_EMAIL = process.env.ORGANIZER_EMAIL || '';
 
 /** ProtonScheduler defaults — used when tenant has no custom branding. */
 const PROTON = {
-  primary: '#219EBC',
-  accent: '#FFB703',
-  bg: '#071828',
-  card: '#0A1E2E',
+  primary: '#6366F1',
+  accent: '#6366F1',
+  bg: '#0F172A',
+  card: '#1E293B',
   border: 'rgba(142,202,230,0.12)',
   borderSolid: '#143345',
   textPrimary: '#E8F4FA',
@@ -110,7 +110,7 @@ export async function sendVisitorConfirmation({ booking, icsContent, branding })
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:${c.bg};font-family:'Geist',-apple-system,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased">
+<body style="margin:0;padding:0;background:${c.bg};font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased">
   <div style="max-width:520px;margin:0 auto;padding:40px 20px">
     <div style="text-align:center;margin-bottom:32px">
       ${headerIcon(c)}
@@ -172,7 +172,7 @@ export async function sendOrganizerNotification({ booking, icsContent, organizer
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:${c.bg};font-family:'Geist',-apple-system,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased">
+<body style="margin:0;padding:0;background:${c.bg};font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased">
   <div style="max-width:520px;margin:0 auto;padding:40px 20px">
     <div style="text-align:center;margin-bottom:32px">
       ${headerIcon(c)}
@@ -251,7 +251,7 @@ export async function sendCancellationNotice(booking, options = {}) {
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:${c.bg};font-family:'Geist',-apple-system,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased">
+<body style="margin:0;padding:0;background:${c.bg};font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased">
   <div style="max-width:520px;margin:0 auto;padding:40px 20px">
     <div style="text-align:center;margin-bottom:32px">
       ${headerIcon(c)}

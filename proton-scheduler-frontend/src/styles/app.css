@@ -566,7 +566,7 @@
   }
 
   .day-times {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
     font-size: var(--font-size-xs);
     flex: 1;
     color: var(--theme-text-muted);
@@ -625,7 +625,7 @@
 
   .booking-day { font-size: 0.75rem; text-transform: uppercase; color: var(--color-primary-light); }
   .booking-date-num {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
     font-size: 1.125rem;
     font-weight: 700;
     color: var(--color-text-primary);
@@ -971,7 +971,7 @@
   .pod-info { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0; }
   .pod-label { font-size: 0.875rem; min-width: 100px; color: var(--theme-text-muted); }
   .pod-url {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
     font-size: 0.75rem;
     padding: 0.375rem 0.625rem;
     border-radius: 0.375rem;
@@ -986,7 +986,7 @@
 
   .pod-url-display { display: flex; align-items: center; gap: 0.5rem; }
   .pod-url-edit { display: flex; flex-direction: column; gap: 0.375rem; flex: 1; }
-  .pod-url-edit .form-input { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
+  .pod-url-edit .form-input { font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace; font-size: 0.75rem; }
   .pod-url-edit-actions { display: flex; gap: 0.375rem; }
   .pod-url-error { font-size: 0.75rem; color: #ef4444; }
 

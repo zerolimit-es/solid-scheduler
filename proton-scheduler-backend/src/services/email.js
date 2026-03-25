@@ -115,12 +115,12 @@ Scheduled with ProtonScheduler - Privacy-first scheduling
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: #219EBC; color: white; padding: 30px; border-radius: 12px 12px 0 0; }
+    .header { background: #6366F1; color: white; padding: 30px; border-radius: 12px 12px 0 0; }
     .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 12px 12px; }
     .detail-row { display: flex; padding: 12px 0; border-bottom: 1px solid #e9ecef; }
     .detail-label { color: #6c757d; width: 100px; }
     .detail-value { color: #212529; font-weight: 500; }
-    .cta { display: inline-block; background: #219EBC; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 20px; }
+    .cta { display: inline-block; background: #6366F1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 20px; }
     .footer { text-align: center; padding: 20px; color: #6c757d; font-size: 14px; }
   </style>
 </head>
@@ -205,7 +205,7 @@ Scheduled with ProtonScheduler - Privacy-first scheduling
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: #219EBC; color: white; padding: 30px; border-radius: 12px 12px 0 0; }
+    .header { background: #6366F1; color: white; padding: 30px; border-radius: 12px 12px 0 0; }
     .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 12px 12px; }
     .detail-row { display: flex; padding: 12px 0; border-bottom: 1px solid #e9ecef; }
     .detail-label { color: #6c757d; width: 100px; }
@@ -467,9 +467,9 @@ ProtonScheduler - Privacy-first scheduling
 <!DOCTYPE html>
 <html>
 <body style="font-family: -apple-system, sans-serif; padding: 20px;">
-  <div style="max-width: 600px; margin: 0 auto; background: #219EBC; padding: 2px; border-radius: 14px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #6366F1; padding: 2px; border-radius: 14px;">
     <div style="background: white; border-radius: 12px; padding: 30px;">
-      <h2 style="color: #219EBC; margin-top: 0;">Meeting Reminder</h2>
+      <h2 style="color: #6366F1; margin-top: 0;">Meeting Reminder</h2>
       <h3 style="margin-bottom: 5px;">${booking.title}</h3>
       <p style="color: #666; margin-top: 5px;">with ${otherParty.name}</p>
       <p style="font-size: 18px; color: #333;"><strong>${formatDateTime(booking.start)}</strong></p>

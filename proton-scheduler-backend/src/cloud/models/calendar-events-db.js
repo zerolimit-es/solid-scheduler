@@ -100,7 +100,7 @@ export function createCalendarEvent(tenantId, event) {
     event.endTime || event.end_time,
     event.allDay ? 1 : 0,
     event.recurrence || null,
-    event.color || '#219EBC',
+    event.color || '#6366F1',
     event.category || 'default',
     event.notes || null,
     event.location || null,

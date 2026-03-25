@@ -22,7 +22,7 @@ export default {
         end_time    TEXT NOT NULL,
         all_day     INTEGER NOT NULL DEFAULT 0,
         recurrence  TEXT,
-        color       TEXT DEFAULT '#219EBC',
+        color       TEXT DEFAULT '#6366F1',
         category    TEXT DEFAULT 'default',
         notes       TEXT,
         location    TEXT,

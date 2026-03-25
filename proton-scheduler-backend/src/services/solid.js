@@ -211,7 +211,7 @@ export async function loadCalendarEvents(podUrl, fetch, options = {}) {
             start: getDatetime(thing, SCHEMA.startDate)?.toISOString(),
             end: getDatetime(thing, SCHEMA.endDate)?.toISOString(),
             allDay: getBoolean(thing, CAL_SCHED.allDay) || false,
-            color: getStringNoLocale(thing, CAL_SCHED.color) || '#219EBC',
+            color: getStringNoLocale(thing, CAL_SCHED.color) || '#6366F1',
             category: getStringNoLocale(thing, CAL_SCHED.category) || 'default',
             notes: getStringNoLocale(thing, SCHEMA.description) || '',
             location: getStringNoLocale(thing, SCHEMA.location) || '',
