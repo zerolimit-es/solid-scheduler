@@ -29,7 +29,7 @@ export default function useBookings({ user, publicSlug, availability, setView, s
   const [slotsLoading, setSlotsLoading] = useState(false);
 
   // Form
-  const [bookingForm, setBookingForm] = useState({ name: '', email: '', notes: '', recurrence: null, teamMemberId: null });
+  const [bookingForm, setBookingForm] = useState({ name: '', email: '', notes: '', recurrence: null });
   const [bookedEvent, setBookedEvent] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -185,7 +185,6 @@ export default function useBookings({ user, publicSlug, availability, setView, s
             email: bookingForm.email,
             notes: bookingForm.notes,
             recurrence: bookingForm.recurrence,
-            ...(bookingForm.teamMemberId ? { teamMemberId: bookingForm.teamMemberId } : {}),
           }),
         });
         result = await res.json();
@@ -222,7 +221,7 @@ export default function useBookings({ user, publicSlug, availability, setView, s
   const resetBooking = () => {
     setSelectedDate(null);
     setSelectedSlot(null);
-    setBookingForm({ name: '', email: '', notes: '', recurrence: null, teamMemberId: null });
+    setBookingForm({ name: '', email: '', notes: '', recurrence: null });
     setBookedEvent(null);
     setView('dashboard');
   };

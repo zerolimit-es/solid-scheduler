@@ -6,7 +6,7 @@ export default function ConfirmationView({ bookedEvent, setView, setBookedEvent,
     setBookedEvent(null);
     setSelectedDate(null);
     setSelectedSlot(null);
-    setBookingForm({ name: '', email: '', notes: '', recurrence: null, teamMemberId: null });
+    setBookingForm({ name: '', email: '', notes: '', recurrence: null });
     setView('booking');
   };
 

@@ -3,10 +3,8 @@ import { CalendarIcon, LoaderIcon, RepeatIcon } from '../common/Icons';
 
 export default function BookingForm({
   selectedDate, selectedSlot, availability, bookingForm, setBookingForm,
-  handleBooking, saving, setView, teamInfo,
+  handleBooking, saving, setView,
 }) {
-  const isManagedMode = teamInfo?.teamScheduling && teamInfo?.schedulingMode === 'managed';
-
   const inputCls = 'w-full py-3 px-3.5 rounded-lg text-sm leading-relaxed transition-all duration-150 bg-[var(--user-input-bg)] border-[1.5px] border-[var(--user-input-border)] text-[var(--user-text)] outline-none focus:border-[rgba(var(--user-primary-rgb),0.5)] focus:shadow-[0_0_0_3px_rgba(var(--user-primary-rgb),0.1)] placeholder:text-[var(--user-text-disabled)]';
   const labelCls = 'block text-xs font-medium mb-1.5 text-[var(--user-text-disabled)]';
 
@@ -21,21 +19,6 @@ export default function BookingForm({
           <p className="text-[0.8125rem] text-[var(--user-primary)] m-0">{selectedSlot?.display} · {availability?.eventDuration || 30} min</p>
         </div>
       </div>
-      {isManagedMode && (
-        <div className="mb-4">
-          <label className={labelCls}>Select Team Member *</label>
-          <select
-            className={inputCls}
-            value={bookingForm.teamMemberId || ''}
-            onChange={(e) => setBookingForm({ ...bookingForm, teamMemberId: e.target.value || null })}
-          >
-            <option value="">Choose a team member...</option>
-            {(teamInfo.members || []).map(m => (
-              <option key={m.id} value={m.id}>{m.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
       <div className="mb-4">
         <label className={labelCls}>Your Name *</label>
         <input
@@ -114,7 +97,7 @@ export default function BookingForm({
         <button
           className="btn flex-1 bg-gradient-to-br from-user-primary to-user-dark text-white border-none"
           onClick={handleBooking}
-          disabled={saving || !bookingForm.name || !bookingForm.email || (isManagedMode && !bookingForm.teamMemberId)}
+          disabled={saving || !bookingForm.name || !bookingForm.email}
         >
           {saving ? <><LoaderIcon className="btn-loader" /> Booking...</> : 'Confirm Booking'}
         </button>
