@@ -9,6 +9,9 @@ export default {
   id: 5,
   name: 'add_oidc_issuer',
   up(db) {
-    db.exec(`ALTER TABLE tenants ADD COLUMN oidc_issuer TEXT`);
+    const cols = db.pragma('table_info(tenants)').map(c => c.name);
+    if (!cols.includes('oidc_issuer')) {
+      db.exec(`ALTER TABLE tenants ADD COLUMN oidc_issuer TEXT`);
+    }
   },
 };
