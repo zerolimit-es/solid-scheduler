@@ -7,17 +7,17 @@
 ────────────────────────────────────────────────────────────────────── */
 @theme inline {
   /* ── Brand Colors ───────────────────────────────────────────────── */
-  --color-brand-primary:    #219EBC;
-  --color-brand-dark:       #023047;
-  --color-brand-light:      #8ECAE6;
-  --color-brand-accent:     #FFB703;
-  --color-brand-accent-2:   #FB8500;
+  --color-brand-primary:    #6366F1;
+  --color-brand-dark:       #312E81;
+  --color-brand-light:      #A5B4FC;
+  --color-brand-accent:     #6366F1;
+  --color-brand-accent-2:   #4F46E5;
 
   /* ── User Branding (public booking page) ────────────────────── */
-  --color-user-primary:  var(--user-primary, #219EBC);
-  --color-user-dark:     var(--user-primary, #023047);
-  --color-user-light:    var(--user-accent, #8ECAE6);
-  --color-user-accent:   var(--user-accent, #FFB703);
+  --color-user-primary:  var(--user-primary, #6366F1);
+  --color-user-dark:     var(--user-primary, #312E81);
+  --color-user-light:    var(--user-accent, #A5B4FC);
+  --color-user-accent:   var(--user-accent, #6366F1);
 
   /* ── Semantic Status Colors ────────────────────────────────────── */
   --color-status-success:      #22c55e;
@@ -30,18 +30,18 @@
   --color-status-coming-soon:  #7B8794;
 
   /* ── Font Families ──────────────────────────────────────────────── */
-  --font-sans:     'Geist', 'DM Sans', sans-serif;
-  --font-serif:    'Newsreader', Georgia, serif;
-  --font-display:  'Fraunces', Georgia, serif;
-  --font-mono:     'JetBrains Mono', 'Space Mono', monospace;
+  --font-sans:     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif:    Georgia, 'Times New Roman', serif;
+  --font-display:  -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:     'Menlo', 'Consolas', monospace;
 
   /* ── Shadows ────────────────────────────────────────────────────── */
-  --shadow-brand-sm:     0 2px 8px rgba(2,48,71,0.25);
-  --shadow-brand-md:     0 4px 16px rgba(2,48,71,0.35);
-  --shadow-brand-lg:     0 8px 32px rgba(2,48,71,0.45);
-  --shadow-glow-primary: 0 0 20px rgba(33,158,188,0.25);
-  --shadow-glow-accent:  0 0 20px rgba(255,183,3,0.20);
-  --shadow-glow-dark:    0 0 30px rgba(2,48,71,0.45);
+  --shadow-brand-sm:     0 2px 8px rgba(0,0,0,0.20);
+  --shadow-brand-md:     0 4px 16px rgba(0,0,0,0.25);
+  --shadow-brand-lg:     0 8px 32px rgba(0,0,0,0.30);
+  --shadow-glow-primary: 0 0 20px rgba(99,102,241,0.20);
+  --shadow-glow-accent:  0 0 20px rgba(99,102,241,0.15);
+  --shadow-glow-dark:    0 0 30px rgba(15,23,42,0.40);
 
   /* ── Animations ─────────────────────────────────────────────────── */
   --animate-fade-up:   fadeUp 0.5s ease-out;

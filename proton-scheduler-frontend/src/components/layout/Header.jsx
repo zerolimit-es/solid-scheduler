@@ -103,7 +103,7 @@ export default function Header({
       {mobileMenuOpen && (
         <div
           ref={menuRef}
-          className="md:hidden absolute top-full left-0 right-0 z-50 mt-2 p-2 rounded-xl border border-[var(--theme-nav-border)] bg-[var(--theme-card-bg,#0A1E2E)]"
+          className="md:hidden absolute top-full left-0 right-0 z-50 mt-2 p-2 rounded-xl border border-[var(--theme-nav-border)] bg-[var(--theme-card-bg,#1E293B)]"
           style={{ backdropFilter: 'blur(12px)' }}
           role="menu"
         >

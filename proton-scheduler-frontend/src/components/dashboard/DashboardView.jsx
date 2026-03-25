@@ -275,7 +275,7 @@ export default function DashboardView({
           flex-shrink: 0;
         }
         .day-toggle.active {
-          background: #219EBC;
+          background: #6366F1;
         }
         .day-toggle::after {
           content: '';

@@ -14,10 +14,10 @@
  */
 
 const BRANDING_DEFAULTS = {
-  bg:      '#0B1D27',
-  text:    '#E8F4FA',
-  primary: '#219EBC',
-  accent:  '#FFB703',
+  bg:      '#0F172A',
+  text:    '#F1F5F9',
+  primary: '#6366F1',
+  accent:  '#A5B4FC',
 };
 
 function hexToRgb(hex) {

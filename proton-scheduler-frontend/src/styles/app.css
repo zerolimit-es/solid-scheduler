@@ -5,7 +5,7 @@
   * { box-sizing: border-box; }
 
   body {
-    font-family: 'Geist', 'DM Sans', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--theme-bg-gradient);
     color: var(--theme-text-body);
     -webkit-font-smoothing: antialiased;
@@ -30,7 +30,7 @@
   .proton-scheduler {
     min-height: 100vh;
     position: relative;
-    font-family: 'Geist', 'DM Sans', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--theme-bg-gradient);
     color: var(--theme-text-body);
   }
@@ -112,7 +112,7 @@
   }
 
   .card-title {
-    font-family: 'Newsreader', serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: 1.125rem;
     font-weight: 600;
     margin: 0;
@@ -167,7 +167,7 @@
   }
 
   .login-header h1 {
-    font-family: 'Geist', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 1.5rem;
     font-weight: 700;
     margin-bottom: 0.5rem;
@@ -224,7 +224,7 @@
   .logo { display: flex; align-items: center; gap: 0.75rem; }
   .logo-icon { width: 2.25rem; height: 2.25rem; color: var(--color-info); }
   .logo-text {
-    font-family: 'Geist', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 1.125rem;
     font-weight: 700;
     background: var(--gradient-brand);
@@ -497,7 +497,7 @@
   }
 
   .stat-value {
-    font-family: 'Fraunces', serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 1.5rem;
     font-weight: 700;
     margin-bottom: 0.25rem;
@@ -940,14 +940,14 @@
     transition: all 0.15s ease;
     margin-bottom: -1px;
     color: var(--theme-settings-tab-color);
-    font-family: 'Geist', 'DM Sans', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
   .settings-tab:hover { color: var(--theme-settings-tab-hover); }
 
   .settings-tab.active {
     color: var(--color-text-primary);
-    border-bottom-color: var(--brand-primary, #219EBC);
+    border-bottom-color: var(--brand-primary, #6366F1);
   }
 
   .settings-section {
@@ -1007,7 +1007,7 @@
     font-size: 0.75rem;
     font-weight: 600;
     background: rgba(245,158,11,0.12);
-    color: #FFB703;
+    color: #6366F1;
   }
 
   /* ── Cleanup Stats ──────────────────────────────────────────────── */
@@ -1165,7 +1165,7 @@
     text-align: left;
     background: var(--theme-card-bg);
     border: 1px solid var(--theme-card-border);
-    font-family: 'Geist', 'DM Sans', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
   .theme-option:hover { border-color: var(--color-primary); background: var(--color-bg-hover); }
@@ -1230,7 +1230,7 @@
   box-shadow: 0 1px 3px rgba(2,48,71,0.07);
 }
 [data-theme="light"] .calendar-day.available:hover {
-  border-color: #219EBC;
+  border-color: #6366F1;
   box-shadow: 0 2px 8px rgba(33,158,188,0.15);
 }
 [data-theme="light"] .calendar-day.other-month,
@@ -1240,7 +1240,7 @@
   color: #d1d5db;
 }
 [data-theme="light"] .booking-link-text { color: #0e6a84; }
-[data-theme="light"] .nav-tab.active { background: #219EBC; color: #ffffff; }
+[data-theme="light"] .nav-tab.active { background: #6366F1; color: #ffffff; }
 [data-theme="light"] .nav-tab { color: #4b5563; }
 [data-theme="light"] .nav-tab:hover { color: #0D1B24; }
 [data-theme="light"] .nav-tabs { background: rgba(2,48,71,0.04); border-color: rgba(2,48,71,0.08); }
