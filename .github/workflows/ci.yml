@@ -30,11 +30,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup SSH for private packages
-        uses: webfactory/ssh-agent@v0.10.0
-        with:
-          ssh-private-key: ${{ secrets.PACKAGES_DEPLOY_KEY }}
-
       - name: Install dependencies
         run: npm ci
 
@@ -63,11 +58,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup SSH for private packages
-        uses: webfactory/ssh-agent@v0.10.0
-        with:
-          ssh-private-key: ${{ secrets.PACKAGES_DEPLOY_KEY }}
 
       - name: Install dependencies
         run: rm package-lock.json && npm install
