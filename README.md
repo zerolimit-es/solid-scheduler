@@ -17,7 +17,7 @@ Your calendar data belongs to you. ProtonScheduler stores scheduling data in you
 ## Quick Start
 
 ```bash
-git clone https://github.com/zerolimit-es/proton-scheduler.git
+git clone https://github.com/zerolimit-es/solid-scheduler.git
 cd proton-scheduler
 
 # Install dependencies

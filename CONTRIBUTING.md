@@ -29,7 +29,7 @@ This project and everyone participating in it is governed by our [Code of Conduc
 
 ```bash
 # Fork the repository on GitHub, then:
-git clone https://github.com/zerolimit-es/proton-scheduler.git
+git clone https://github.com/zerolimit-es/solid-scheduler.git
 cd proton-scheduler
 
 # Install dependencies
@@ -59,7 +59,7 @@ make dev      # Start frontend dev server (Vite)
 
 ### Reporting Bugs
 
-Before creating bug reports, please check the [existing issues](https://github.com/zerolimit-es/proton-scheduler/issues) to avoid duplicates.
+Before creating bug reports, please check the [existing issues](https://github.com/zerolimit-es/solid-scheduler/issues) to avoid duplicates.
 
 When creating a bug report, include:
 
@@ -236,8 +236,8 @@ chore(deps): upgrade tailwindcss to v4
 
 ### Getting Help
 
-- [GitHub Discussions](https://github.com/zerolimit-es/proton-scheduler/discussions) — Questions and ideas
-- [GitHub Issues](https://github.com/zerolimit-es/proton-scheduler/issues) — Bug reports and feature requests
+- [GitHub Discussions](https://github.com/zerolimit-es/solid-scheduler/discussions) — Questions and ideas
+- [GitHub Issues](https://github.com/zerolimit-es/solid-scheduler/issues) — Bug reports and feature requests
 - Email: [scheduler@zerolimit.es](mailto:scheduler@zerolimit.es)
 
 ---
