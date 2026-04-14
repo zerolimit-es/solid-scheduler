@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# ProtonScheduler Quick Start Script
+# SolidScheduler Quick Start Script
 # =============================================================================
 # Usage:
 #   ./start.sh           - Start in development mode
@@ -53,7 +53,7 @@ setup_env() {
 }
 
 start_dev() {
-    log_info "Starting ProtonScheduler in DEVELOPMENT mode..."
+    log_info "Starting SolidScheduler in DEVELOPMENT mode..."
     docker compose -f docker-compose.dev.yml up --build
 }
 
@@ -61,10 +61,10 @@ start_prod() {
     log_info "Building frontend..."
     cd proton-scheduler-frontend && npm ci && rm -rf dist && npm run build && cd ..
 
-    log_info "Starting ProtonScheduler in PRODUCTION mode..."
+    log_info "Starting SolidScheduler in PRODUCTION mode..."
     docker compose up -d --build
 
-    log_success "ProtonScheduler is starting..."
+    log_success "SolidScheduler is starting..."
     echo ""
     sleep 5
     docker compose ps
@@ -73,7 +73,7 @@ start_prod() {
 }
 
 stop_all() {
-    log_info "Stopping ProtonScheduler..."
+    log_info "Stopping SolidScheduler..."
     docker compose down 2>/dev/null || true
     docker compose -f docker-compose.dev.yml down 2>/dev/null || true
     log_success "All services stopped"
@@ -87,7 +87,7 @@ show_status() {
 main() {
     echo ""
     echo "╔═══════════════════════════════════════════════════════════════╗"
-    echo "║             ProtonScheduler Docker Deployment                 ║"
+    echo "║             SolidScheduler Docker Deployment                 ║"
     echo "║         Privacy-first scheduling with Solid Pods              ║"
     echo "╚═══════════════════════════════════════════════════════════════╝"
     echo ""

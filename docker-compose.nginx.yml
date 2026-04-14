@@ -1,5 +1,5 @@
 # =============================================================================
-# ProtonScheduler — Nginx + Certbot HTTPS Override
+# SolidScheduler — Nginx + Certbot HTTPS Override
 # =============================================================================
 # Adds an nginx reverse proxy with Let's Encrypt certificates via Certbot.
 #
@@ -23,7 +23,7 @@ services:
 
   nginx:
     image: nginx:alpine
-    container_name: protonscheduler-nginx
+    container_name: solidscheduler-nginx
     restart: unless-stopped
     ports:
       - "80:80"
@@ -40,7 +40,7 @@ services:
 
   certbot:
     image: certbot/certbot
-    container_name: protonscheduler-certbot
+    container_name: solidscheduler-certbot
     volumes:
       - certbot-webroot:/var/www/certbot
       - certbot-certs:/etc/letsencrypt

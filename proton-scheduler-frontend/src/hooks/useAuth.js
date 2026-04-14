@@ -2,7 +2,7 @@
  * useAuth Hook
  *
  * Thin wrapper around @zerolimit/packages/solid-auth/react, configured for
- * ProtonScheduler.  v0.2.0 of the package supports extraStatusFields (oidcIssuer is
+ * SolidScheduler.  v0.2.0 of the package supports extraStatusFields (oidcIssuer is
  * merged into user automatically), stable object refs, and server-side Pod
  * caching — so the workarounds that used to live here are no longer needed.
  */

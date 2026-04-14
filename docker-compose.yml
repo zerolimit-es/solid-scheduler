@@ -1,5 +1,5 @@
 # =============================================================================
-# ProtonScheduler — Docker Compose (Self-Hosted)
+# SolidScheduler — Docker Compose (Self-Hosted)
 # =============================================================================
 #
 # Quick start:
@@ -25,7 +25,7 @@ services:
       target: production
       args:
         VITE_API_URL: ${BASE_URL:-http://localhost:3001}
-    container_name: protonscheduler-frontend
+    container_name: solidscheduler-frontend
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-0.0.0.0:80}:80"
@@ -40,7 +40,7 @@ services:
       context: ./proton-scheduler-backend
       args:
         GIT_AUTH_TOKEN: ${GIT_AUTH_TOKEN:-}
-    container_name: protonscheduler-backend
+    container_name: solidscheduler-backend
     restart: unless-stopped
     env_file: .env
     ports:
@@ -54,7 +54,7 @@ services:
   # -- Redis (session storage) --
   redis:
     image: redis:7-alpine
-    container_name: protonscheduler-redis
+    container_name: solidscheduler-redis
     restart: unless-stopped
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     volumes:

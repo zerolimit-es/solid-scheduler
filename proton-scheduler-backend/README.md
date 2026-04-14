@@ -1,4 +1,4 @@
-# ProtonScheduler Backend
+# SolidScheduler Backend
 
 A privacy-first scheduling API built on [Solid](https://solidproject.org/) using [Inrupt's SDK](https://docs.inrupt.com/developer-tools/javascript/client-libraries/).
 

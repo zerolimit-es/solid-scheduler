@@ -1,6 +1,6 @@
-# ProtonScheduler Frontend
+# SolidScheduler Frontend
 
-A React frontend for ProtonScheduler, built with Vite and Tailwind CSS v4.
+A React frontend for SolidScheduler, built with Vite and Tailwind CSS v4.
 
 ## Features
 

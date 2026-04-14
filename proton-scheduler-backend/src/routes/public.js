@@ -47,7 +47,7 @@ router.get('/:slug', (req, res) => {
   if (['register', 'resolve', 'bookings'].includes(slug)) return res.status(404).json({ error: 'Not found' });
   const stats = getBookingStats(slug);
   const avail = getAvailability(slug);
-  res.json({ slug, profile: { name: avail?.name || process.env.ORGANIZER_NAME || 'ProtonScheduler', eventDuration: avail?.eventDuration || 30, timezone: avail?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone }, stats });
+  res.json({ slug, profile: { name: avail?.name || process.env.ORGANIZER_NAME || 'SolidScheduler', eventDuration: avail?.eventDuration || 30, timezone: avail?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone }, stats });
 });
 
 // GET /api/public/:slug/team - public team info for booking page
@@ -296,18 +296,18 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
     const icsContent = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//ProtonScheduler//Privacy-First Scheduling//EN',
+      'PRODID:-//SolidScheduler//Privacy-First Scheduling//EN',
       'CALSCALE:GREGORIAN',
       'METHOD:REQUEST',
       'BEGIN:VEVENT',
-      `UID:${bookingId}@protonscheduler.local`,
+      `UID:${bookingId}@solidscheduler.local`,
       `DTSTAMP:${nowICS}`,
       `DTSTART;TZID=${tz}:${startICS}`,
       `DTEND;TZID=${tz}:${endICS}`,
       `SUMMARY:Meeting - ${esc(name)} & ${esc(process.env.ORGANIZER_NAME || 'Organizer')}`,
-      `DESCRIPTION:Booking via ProtonScheduler\\n\\nAttendee: ${esc(name)}\\nEmail: ${esc(email)}${notes ? '\\nNotes: ' + esc(notes) : ''}`,
+      `DESCRIPTION:Booking via SolidScheduler\\n\\nAttendee: ${esc(name)}\\nEmail: ${esc(email)}${notes ? '\\nNotes: ' + esc(notes) : ''}`,
       'LOCATION:Video Call',
-      `ORGANIZER;CN=${esc(process.env.ORGANIZER_NAME || 'Organizer')}:mailto:${process.env.SMTP_FROM || 'noreply@protonscheduler.local'}`,
+      `ORGANIZER;CN=${esc(process.env.ORGANIZER_NAME || 'Organizer')}:mailto:${process.env.SMTP_FROM || 'noreply@solidscheduler.local'}`,
       `ATTENDEE;CN=${esc(name)};RSVP=TRUE;PARTSTAT=ACCEPTED:mailto:${email}`,
       'STATUS:CONFIRMED',
       'SEQUENCE:0',

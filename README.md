@@ -1,8 +1,8 @@
-# ProtonScheduler
+# SolidScheduler
 
 > Privacy-first scheduling built on Solid Pods. The open-source Calendly alternative.
 
-Your calendar data belongs to you. ProtonScheduler stores scheduling data in your personal [Solid Pod](https://solidproject.org/) — you own your data, always.
+Your calendar data belongs to you. SolidScheduler stores scheduling data in your personal [Solid Pod](https://solidproject.org/) — you own your data, always.
 
 ## Features
 

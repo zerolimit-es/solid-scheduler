@@ -1,6 +1,6 @@
 # Self-Hosting Guide
 
-Everything you need to run ProtonScheduler on your own server.
+Everything you need to run SolidScheduler on your own server.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ Paste the result into `SESSION_SECRET` in your `.env` file.
 
 ## HTTPS Setup
 
-ProtonScheduler requires HTTPS in production (Solid OIDC and session cookies depend on it). Choose one of the options below.
+SolidScheduler requires HTTPS in production (Solid OIDC and session cookies depend on it). Choose one of the options below.
 
 ### Option A: Caddy (recommended — automatic HTTPS)
 
@@ -81,7 +81,7 @@ If you already run a reverse proxy (Traefik, HAProxy, etc.), point it at the fro
 
 ## Solid Pod Setup
 
-ProtonScheduler stores your scheduling data in a Solid Pod — a personal data store you control.
+SolidScheduler stores your scheduling data in a Solid Pod — a personal data store you control.
 
 ### Hosted providers (easiest)
 
@@ -109,7 +109,7 @@ See the [Community Solid Server docs](https://communitysolidserver.github.io/Com
 
 ## Email (SMTP)
 
-ProtonScheduler sends booking confirmations and cancellation notices via SMTP. Any SMTP provider works.
+SolidScheduler sends booking confirmations and cancellation notices via SMTP. Any SMTP provider works.
 
 ### Configuration
 
@@ -149,16 +149,16 @@ CALDAV_ENABLED=true
 CALDAV_SERVER_URL=https://your-nextcloud.com/remote.php/dav/calendars/USERNAME/CALENDAR_NAME/
 CALDAV_USERNAME=your-username
 CALDAV_PASSWORD=your-app-password
-CALDAV_CALENDAR_NAME=ProtonScheduler
+CALDAV_CALENDAR_NAME=SolidScheduler
 ```
 
 ### Nextcloud setup (~5 minutes)
 
-1. In Nextcloud, create a new calendar called "ProtonScheduler" (or any name you like).
+1. In Nextcloud, create a new calendar called "SolidScheduler" (or any name you like).
 2. Generate an app password: **Settings > Security > Devices & sessions > Create new app password**.
 3. Your CalDAV URL is:
    ```
-   https://your-nextcloud.com/remote.php/dav/calendars/YOUR_USERNAME/protonscheduler/
+   https://your-nextcloud.com/remote.php/dav/calendars/YOUR_USERNAME/solidscheduler/
    ```
    (The calendar name in the URL is lowercase with no spaces.)
 4. Set the env vars above and restart:

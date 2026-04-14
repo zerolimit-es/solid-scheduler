@@ -1,7 +1,7 @@
 /**
  * Solid Pod Service — Thin wrapper around @zerolimit/solid-pod-sync
  *
- * Injects ProtonScheduler's config.pod paths so existing consumers don't need
+ * Injects SolidScheduler's config.pod paths so existing consumers don't need
  * to pass pathConfig on every call.
  *
  * Also includes calendar event Pod operations (saveCalendarEvent,
@@ -52,7 +52,7 @@ import { buildRRule } from '../utils/rrule.js';
 
 const podPaths = config.pod;
 
-// Bind ProtonScheduler's path config into every function
+// Bind SolidScheduler's path config into every function
 export function getSchedulerPaths(podUrl) {
   return _getSchedulerPaths(podUrl, podPaths);
 }

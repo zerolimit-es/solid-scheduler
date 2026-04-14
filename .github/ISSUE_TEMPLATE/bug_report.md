@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Create a report to help us improve ProtonScheduler
+about: Create a report to help us improve SolidScheduler
 title: '[BUG] '
 labels: bug, needs-triage
 assignees: ''

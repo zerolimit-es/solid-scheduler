@@ -1,4 +1,4 @@
-# ProtonScheduler Frontend Dockerfile
+# SolidScheduler Frontend Dockerfile
 # Multi-stage build for optimized production image
 #
 # Build context must be the REPO ROOT (not proton-scheduler-frontend/).
@@ -73,9 +73,9 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 FROM nginx:alpine AS production
 
 # Add labels
-LABEL org.opencontainers.image.title="ProtonScheduler Frontend"
+LABEL org.opencontainers.image.title="SolidScheduler Frontend"
 LABEL org.opencontainers.image.description="Privacy-first scheduling UI with Solid Pod integration"
-LABEL org.opencontainers.image.vendor="ProtonScheduler"
+LABEL org.opencontainers.image.vendor="SolidScheduler"
 
 # Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf

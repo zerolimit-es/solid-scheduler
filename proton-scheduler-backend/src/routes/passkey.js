@@ -1,7 +1,7 @@
 /**
  * Passkey (WebAuthn) Routes — Thin wrapper around @zerolimit/passkey-mfa
  *
- * Provides ProtonScheduler-specific credential store (SQLite) and challenge store
+ * Provides SolidScheduler-specific credential store (SQLite) and challenge store
  * (Redis + in-memory fallback) to the generic passkey router.
  */
 
@@ -120,7 +120,7 @@ const credentialStore = {
 const router = createPasskeyRouter({
   challengeStore,
   credentialStore,
-  rpName: 'ProtonScheduler',
+  rpName: 'SolidScheduler',
   rpId: getRpId(),
   origin: getAllowedOrigins(),
   getUserId: (req) => req.tenant?.id || req.session?.tenantId,

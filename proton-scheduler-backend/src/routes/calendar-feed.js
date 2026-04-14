@@ -35,7 +35,7 @@ router.get('/:token.ics', (req, res) => {
     const tenant = db.prepare('SELECT * FROM tenants WHERE id = ?').get(tenantId);
     if (!tenant) return res.status(404).send('Feed not found');
 
-    const calName = tenant.company_name || tenant.email || 'ProtonScheduler Calendar';
+    const calName = tenant.company_name || tenant.email || 'SolidScheduler Calendar';
     const slug = tenant.booking_slug;
 
     // Get bookings (upcoming, last 30 days, next 90 days)
@@ -62,7 +62,7 @@ router.get('/:token.ics', (req, res) => {
     const lines = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//ProtonScheduler//Calendar Feed//EN',
+      'PRODID:-//SolidScheduler//Calendar Feed//EN',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
       `X-WR-CALNAME:${escapeICS(calName)}`,
@@ -97,7 +97,7 @@ router.get('/:token.ics', (req, res) => {
 });
 
 function bookingToVEvent(b) {
-  const uid = `booking-${b.id}@protonscheduler.local`;
+  const uid = `booking-${b.id}@solidscheduler.local`;
   const dtstart = naiveToICSDate(b.start_time);
   const dtend = naiveToICSDate(b.end_time);
   const created = b.created_at ? dateToICS(new Date(b.created_at)) : dateToICS(new Date());
@@ -118,7 +118,7 @@ function bookingToVEvent(b) {
 }
 
 function calEventToVEvent(e) {
-  const uid = e.ics_uid || `calevent-${e.id}@protonscheduler.local`;
+  const uid = e.ics_uid || `calevent-${e.id}@solidscheduler.local`;
   const dtstart = e.all_day ? naiveToICSDateOnly(e.start_time) : naiveToICSDate(e.start_time);
   const dtend = e.all_day ? naiveToICSDateOnly(e.end_time) : naiveToICSDate(e.end_time);
   const created = e.created_at ? dateToICS(new Date(e.created_at)) : dateToICS(new Date());

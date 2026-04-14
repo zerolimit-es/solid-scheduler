@@ -1,5 +1,5 @@
 /**
- * ProtonScheduler Configuration
+ * SolidScheduler Configuration
  * Centralized configuration management with environment variables
  */
 
@@ -43,12 +43,12 @@ export const config = {
     secure: process.env.SMTP_SECURE === 'true',
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
-    from: process.env.EMAIL_FROM || 'noreply@protonscheduler.local',
+    from: process.env.EMAIL_FROM || 'noreply@solidscheduler.local',
   },
 
   // Pod Paths
   pod: {
-    schedulerPath: process.env.POD_SCHEDULER_PATH || 'proton-scheduler',
+    schedulerPath: process.env.POD_SCHEDULER_PATH || 'solid-scheduler',
     availabilityFile: process.env.POD_AVAILABILITY_FILE || 'availability.ttl',
     bookingsContainer: process.env.POD_BOOKINGS_CONTAINER || 'bookings',
     publicProfile: process.env.POD_PUBLIC_PROFILE || 'public-profile.ttl',

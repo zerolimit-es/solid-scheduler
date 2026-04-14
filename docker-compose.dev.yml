@@ -5,7 +5,7 @@ services:
       context: ./proton-scheduler-backend
       args:
         GIT_AUTH_TOKEN: ${GIT_AUTH_TOKEN:-}
-    container_name: protonscheduler-dev-backend
+    container_name: solidscheduler-dev-backend
     restart: unless-stopped
     env_file: .env
     ports: ["3001:3001"]
@@ -18,7 +18,7 @@ services:
       - NODE_ENV=development
   redis:
     image: redis:7-alpine
-    container_name: protonscheduler-dev-redis
+    container_name: solidscheduler-dev-redis
     restart: unless-stopped
     command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
     volumes: [dev-redis:/data]

@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for ProtonScheduler
+about: Suggest an idea for SolidScheduler
 title: '[FEATURE] '
 labels: enhancement, needs-triage
 assignees: ''

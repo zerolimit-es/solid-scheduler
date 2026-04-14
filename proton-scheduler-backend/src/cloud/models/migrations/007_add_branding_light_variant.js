@@ -3,7 +3,7 @@
  *
  * Stores separate background and text colors for light mode so
  * each style preset can serve both a dark and light experience.
- * NULL = no custom light variant (falls back to ProtonScheduler's light theme).
+ * NULL = no custom light variant (falls back to SolidScheduler's light theme).
  */
 export default {
   id: 7,

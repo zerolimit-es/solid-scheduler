@@ -32,7 +32,7 @@ function makeEvent(overrides = {}) {
     end: new Date(Date.UTC(2025, 0, 6, 10, 30, 0)),
     organizer: { name: 'Alice Smith', email: 'alice@example.com' },
     attendee: { name: 'Bob Jones', email: 'bob@example.com' },
-    uid: 'test-uid-123@protonscheduler.local',
+    uid: 'test-uid-123@solidscheduler.local',
     ...overrides,
   };
 }
@@ -99,14 +99,14 @@ describe('generateICS', () => {
 
   it('uses provided UID', () => {
     const ics = generateICS(makeEvent());
-    assert.equal(getLine(ics, 'UID'), 'UID:test-uid-123@protonscheduler.local');
+    assert.equal(getLine(ics, 'UID'), 'UID:test-uid-123@solidscheduler.local');
   });
 
   it('auto-generates UID when not provided', () => {
     const ics = generateICS(makeEvent({ uid: undefined }));
     const uidLine = getLine(ics, 'UID');
     assert.ok(uidLine);
-    assert.ok(uidLine.endsWith('@protonscheduler.local'));
+    assert.ok(uidLine.endsWith('@solidscheduler.local'));
   });
 
   it('includes SUMMARY with event title', () => {
@@ -322,7 +322,7 @@ describe('generateCancellationICS', () => {
 
   it('preserves original UID', () => {
     const ics = generateCancellationICS(makeEvent());
-    assert.equal(getLine(ics, 'UID'), 'UID:test-uid-123@protonscheduler.local');
+    assert.equal(getLine(ics, 'UID'), 'UID:test-uid-123@solidscheduler.local');
   });
 });
 
@@ -368,7 +368,7 @@ describe('generateOccurrenceCancellationICS', () => {
 
   it('preserves original UID', () => {
     const ics = generateOccurrenceCancellationICS(makeEvent(), occurrenceDate);
-    assert.equal(getLine(ics, 'UID'), 'UID:test-uid-123@protonscheduler.local');
+    assert.equal(getLine(ics, 'UID'), 'UID:test-uid-123@solidscheduler.local');
   });
 });
 
@@ -456,7 +456,7 @@ describe('parseICSEvent', () => {
 
   it('parses UID', () => {
     const parsed = parseICSEvent(ics);
-    assert.equal(parsed.uid, 'test-uid-123@protonscheduler.local');
+    assert.equal(parsed.uid, 'test-uid-123@solidscheduler.local');
   });
 
   it('parses SUMMARY as title', () => {

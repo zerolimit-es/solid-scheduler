@@ -21,10 +21,10 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const FROM = `"${process.env.SMTP_FROM_NAME || 'ProtonScheduler'}" <${process.env.SMTP_FROM || 'noreply@localhost'}>`;
+const FROM = `"${process.env.SMTP_FROM_NAME || 'SolidScheduler'}" <${process.env.SMTP_FROM || 'noreply@localhost'}>`;
 const ORGANIZER_EMAIL = process.env.ORGANIZER_EMAIL || '';
 
-/** ProtonScheduler defaults — used when tenant has no custom branding. */
+/** SolidScheduler defaults — used when tenant has no custom branding. */
 const PROTON = {
   primary: '#6366F1',
   accent: '#6366F1',
@@ -39,7 +39,7 @@ const PROTON = {
   cancel: '#dc2626',
 };
 
-/** Resolve tenant branding to email-safe colors with ProtonScheduler fallbacks. */
+/** Resolve tenant branding to email-safe colors with SolidScheduler fallbacks. */
 function resolveColors(branding) {
   if (!branding) return PROTON;
   return {
@@ -97,8 +97,8 @@ function headerIcon(c) {
 
 function footerText(c) {
   if (c.hideBadge && c.companyName) return `Scheduled with ${escHtml(c.companyName)}`;
-  if (c.companyName) return `Scheduled with ${escHtml(c.companyName)} · Powered by ProtonScheduler`;
-  return 'Scheduled with ProtonScheduler · Privacy-first scheduling';
+  if (c.companyName) return `Scheduled with ${escHtml(c.companyName)} · Powered by SolidScheduler`;
+  return 'Scheduled with SolidScheduler · Privacy-first scheduling';
 }
 
 export async function sendVisitorConfirmation({ booking, icsContent, branding }) {
@@ -115,7 +115,7 @@ export async function sendVisitorConfirmation({ booking, icsContent, branding })
     <div style="text-align:center;margin-bottom:32px">
       ${headerIcon(c)}
       <h1 style="color:${c.textPrimary};font-size:22px;font-weight:700;margin:0 0 4px">Meeting Confirmed</h1>
-      <p style="color:${c.textMuted};font-size:13px;margin:0">${c.companyName ? escHtml(c.companyName) : 'Powered by ProtonScheduler'}</p>
+      <p style="color:${c.textMuted};font-size:13px;margin:0">${c.companyName ? escHtml(c.companyName) : 'Powered by SolidScheduler'}</p>
     </div>
     <div style="background:${c.card};border-radius:16px;border:1px solid ${c.border};overflow:hidden">
       <div style="padding:28px 32px">
@@ -234,10 +234,10 @@ export async function sendCancellationNotice(booking, options = {}) {
   const icsLines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//ProtonScheduler//EN',
+    'PRODID:-//SolidScheduler//EN',
     'METHOD:CANCEL',
     'BEGIN:VEVENT',
-    `UID:${booking.id}@protonscheduler.local`,
+    `UID:${booking.id}@solidscheduler.local`,
     `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
     `DTSTART:${new Date(booking.start).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
     `DTEND:${new Date(booking.end).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,

@@ -1,5 +1,5 @@
 # =============================================================================
-# ProtonScheduler — Caddy HTTPS Override
+# SolidScheduler — Caddy HTTPS Override
 # =============================================================================
 # Adds a Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
 #
@@ -14,7 +14,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
-    container_name: protonscheduler-caddy
+    container_name: solidscheduler-caddy
     restart: unless-stopped
     ports:
       - "80:80"

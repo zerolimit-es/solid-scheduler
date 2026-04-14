@@ -1,7 +1,7 @@
 /**
  * Auth Routes
  *
- * Uses @zerolimit/solid-auth's createAuthRouter with ProtonScheduler-specific
+ * Uses @zerolimit/solid-auth's createAuthRouter with SolidScheduler-specific
  * lifecycle hooks for tenant management, post-login sync, and MFA.
  */
 
@@ -22,7 +22,7 @@ const router = createAuthRouter({
   sessionManager,
   baseUrl: config.baseUrl,
   frontendUrl: config.frontendUrl,
-  clientName: 'ProtonScheduler',
+  clientName: 'SolidScheduler',
   defaultIdp: config.solid.defaultIdp,
 
   // ── Before login redirect: remember which IDP was chosen ────────────────

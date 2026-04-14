@@ -1,5 +1,5 @@
 /**
- * ProtonScheduler Test Suite
+ * SolidScheduler Test Suite
  * Run: node tests/test-slots.js
  */
 

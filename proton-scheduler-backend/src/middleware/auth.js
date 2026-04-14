@@ -2,7 +2,7 @@
  * Solid Authentication Middleware
  *
  * Thin wrapper around @zerolimit/solid-auth that configures the session
- * manager with ProtonScheduler's Redis + in-memory storage and re-exports the
+ * manager with SolidScheduler's Redis + in-memory storage and re-exports the
  * middleware functions for backward compatibility.
  */
 
@@ -62,7 +62,7 @@ function buildStorage() {
 // ── Session Manager (singleton) ─────────────────────────────────────────────
 export const sessionManager = new SolidSessionManager({
   storage: buildStorage(),
-  clientName: 'ProtonScheduler',
+  clientName: 'SolidScheduler',
 });
 
 // Re-export the fetchMap so sync.js and other modules can access it

@@ -150,7 +150,7 @@ function buildRRuleString(recurrence) {
  */
 export function generateICS(event) {
   const now = new Date();
-  const uid = event.uid || `${uuidv4()}@protonscheduler.local`;
+  const uid = event.uid || `${uuidv4()}@solidscheduler.local`;
   const sequence = event.sequence || 0;
   const status = event.status || 'CONFIRMED';
   const method = event.method || 'REQUEST';
@@ -160,7 +160,7 @@ export function generateICS(event) {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//ProtonScheduler//Solid Calendar//EN',
+    'PRODID:-//SolidScheduler//Solid Calendar//EN',
     'CALSCALE:GREGORIAN',
     `METHOD:${method}`,
     'BEGIN:VEVENT',
@@ -285,12 +285,12 @@ export function generateCancellationICS(event) {
  */
 export function generateAvailabilityICS(availability) {
   const now = new Date();
-  const uid = `avail-${uuidv4()}@protonscheduler.local`;
+  const uid = `avail-${uuidv4()}@solidscheduler.local`;
   
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//ProtonScheduler//Solid Calendar//EN',
+    'PRODID:-//SolidScheduler//Solid Calendar//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VFREEBUSY',

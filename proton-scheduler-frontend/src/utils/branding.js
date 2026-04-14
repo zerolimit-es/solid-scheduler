@@ -5,7 +5,7 @@
  * booking components) and the --theme-* layer (consumed by body/global
  * styles) are overridden so the entire page reflects the tenant's brand.
  *
- * ProtonScheduler's own brand identity variables (--brand-primary, etc.) are
+ * SolidScheduler's own brand identity variables (--brand-primary, etc.) are
  * never touched — only the runtime theming layer changes.
  *
  * Theme-aware: accepts the active theme ('dark' | 'light') and applies

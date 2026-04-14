@@ -1,5 +1,5 @@
 /**
- * ProtonScheduler Backend Server
+ * SolidScheduler Backend Server
  *
  * A privacy-first scheduling application built on Solid/Inrupt.
  * Open-source edition — self-hosted, no cloud dependencies.
@@ -61,7 +61,7 @@ app.set("trust proxy", 1);
 
 // Session handling (for Solid OIDC state)
 app.use(cookieSession({
-  name: 'proton-scheduler-session',
+  name: 'solid-scheduler-session',
   secret: config.sessionSecret,
   maxAge: 24 * 60 * 60 * 1000,
   secure: config.nodeEnv === 'production',
@@ -92,7 +92,7 @@ app.get('/health', (req, res) => {
 // API info
 app.get('/api', (req, res) => {
   res.json({
-    name: 'ProtonScheduler API',
+    name: 'SolidScheduler API',
     version: '1.0.0',
     description: 'Privacy-first scheduling built on Solid',
     endpoints: {
@@ -167,7 +167,7 @@ async function startServer() {
   console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║   ProtonScheduler (Open Source)                               ║
+║   SolidScheduler (Open Source)                               ║
 ║   Privacy-first scheduling on Solid                           ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝

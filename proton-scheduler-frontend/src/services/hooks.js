@@ -1,5 +1,5 @@
 /**
- * Custom React Hooks for ProtonScheduler
+ * Custom React Hooks for SolidScheduler
  * 
  * Provides hooks for:
  * - Authentication state management

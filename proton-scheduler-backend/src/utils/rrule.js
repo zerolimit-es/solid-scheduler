@@ -2,7 +2,7 @@
  * Minimal RRULE Expander
  *
  * Expands iCalendar RRULE strings into concrete occurrence dates within a
- * given date range.  Supports the subset of RFC 5545 needed by ProtonScheduler:
+ * given date range.  Supports the subset of RFC 5545 needed by SolidScheduler:
  *
  *   FREQ   = DAILY | WEEKLY | MONTHLY | YEARLY
  *   INTERVAL, COUNT, UNTIL, BYDAY

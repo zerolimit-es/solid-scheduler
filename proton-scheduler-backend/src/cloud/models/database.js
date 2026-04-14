@@ -7,7 +7,7 @@ import { runMigrations } from './migrations/runner.js';
 import { checkLimit } from '../config/tiers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data/proton-scheduler.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data/solid-scheduler.db');
 const DB_KEY = process.env.DB_ENCRYPTION_KEY || '';
 
 let db;

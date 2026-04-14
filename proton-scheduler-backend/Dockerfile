@@ -1,4 +1,4 @@
-# ProtonScheduler Backend Dockerfile
+# SolidScheduler Backend Dockerfile
 # Multi-stage build for optimized production image
 
 # =============================================================================
@@ -46,9 +46,9 @@ CMD ["npm", "run", "dev"]
 FROM node:20-alpine AS production
 
 # Add labels for container identification
-LABEL org.opencontainers.image.title="ProtonScheduler Backend"
+LABEL org.opencontainers.image.title="SolidScheduler Backend"
 LABEL org.opencontainers.image.description="Privacy-first scheduling API with Solid Pod integration"
-LABEL org.opencontainers.image.vendor="ProtonScheduler"
+LABEL org.opencontainers.image.vendor="SolidScheduler"
 
 # Create non-root user for security and install su-exec for entrypoint
 RUN addgroup -g 1001 -S nodejs && \

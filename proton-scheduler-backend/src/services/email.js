@@ -86,7 +86,7 @@ export async function sendBookingConfirmation(booking, options = {}) {
   
   // Email to attendee
   const attendeeEmail = {
-    from: `"ProtonScheduler" <${config.email.from}>`,
+    from: `"SolidScheduler" <${config.email.from}>`,
     to: booking.attendee.email,
     subject: `Confirmed: ${booking.title} with ${booking.organizer.name}`,
     text: `
@@ -101,7 +101,7 @@ ${booking.notes ? `\nNotes: ${booking.notes}` : ''}
 Add this event to your calendar by opening the attached .ics file.
 
 ---
-Scheduled with ProtonScheduler - Privacy-first scheduling
+Scheduled with SolidScheduler - Privacy-first scheduling
     `.trim(),
     html: `
 <!DOCTYPE html>
@@ -156,7 +156,7 @@ Scheduled with ProtonScheduler - Privacy-first scheduling
       </p>
     </div>
     <div class="footer">
-      <p>🛡️ Scheduled with ProtonScheduler · Privacy-first scheduling</p>
+      <p>🛡️ Scheduled with SolidScheduler · Privacy-first scheduling</p>
     </div>
   </div>
 </body>
@@ -176,7 +176,7 @@ Scheduled with ProtonScheduler - Privacy-first scheduling
   
   // Email to organizer
   const organizerEmail = {
-    from: `"ProtonScheduler" <${config.email.from}>`,
+    from: `"SolidScheduler" <${config.email.from}>`,
     to: booking.organizer.email,
     subject: `New Booking: ${booking.title} with ${booking.attendee.name}`,
     text: `
@@ -191,7 +191,7 @@ ${booking.notes ? `\nAttendee Notes: ${booking.notes}` : ''}
 The attendee has been sent a confirmation email.
 
 ---
-Scheduled with ProtonScheduler - Privacy-first scheduling
+Scheduled with SolidScheduler - Privacy-first scheduling
     `.trim(),
     html: `
 <!DOCTYPE html>
@@ -238,7 +238,7 @@ Scheduled with ProtonScheduler - Privacy-first scheduling
       </p>
     </div>
     <div class="footer">
-      <p>🛡️ Scheduled with ProtonScheduler · Privacy-first scheduling</p>
+      <p>🛡️ Scheduled with SolidScheduler · Privacy-first scheduling</p>
     </div>
   </div>
 </body>
@@ -316,7 +316,7 @@ export async function sendCancellationNotice(booking, options = {}) {
   const cancelledBy = options.cancelledBy || 'the organizer';
   
   const emailContent = {
-    from: `"ProtonScheduler" <${config.email.from}>`,
+    from: `"SolidScheduler" <${config.email.from}>`,
     subject: `Cancelled: ${booking.title}`,
     text: `
 Meeting Cancelled
@@ -329,7 +329,7 @@ Originally scheduled: ${formatDateTime(booking.start)}
 ${cancellationReason}
 
 ---
-ProtonScheduler - Privacy-first scheduling
+SolidScheduler - Privacy-first scheduling
     `.trim(),
     html: `
 <!DOCTYPE html>
@@ -369,7 +369,7 @@ ProtonScheduler - Privacy-first scheduling
       </p>
     </div>
     <div class="footer">
-      <p>🛡️ Scheduled with ProtonScheduler · Privacy-first scheduling</p>
+      <p>🛡️ Scheduled with SolidScheduler · Privacy-first scheduling</p>
     </div>
   </div>
 </body>
@@ -442,7 +442,7 @@ export async function sendReminder(booking, recipientType = 'attendee') {
   };
   
   const email = {
-    from: `"ProtonScheduler" <${config.email.from}>`,
+    from: `"SolidScheduler" <${config.email.from}>`,
     to: recipient.email,
     subject: `Reminder: ${booking.title} - ${formatDateTime(booking.start)}`,
     text: `
@@ -456,7 +456,7 @@ When: ${formatDateTime(booking.start)}
 ${booking.location ? `Where: ${booking.location}` : ''}
 
 ---
-ProtonScheduler - Privacy-first scheduling
+SolidScheduler - Privacy-first scheduling
     `.trim(),
     html: `
 <!DOCTYPE html>
@@ -469,7 +469,7 @@ ProtonScheduler - Privacy-first scheduling
       <p style="color: #666; margin-top: 5px;">with ${otherParty.name}</p>
       <p style="font-size: 18px; color: #333;"><strong>${formatDateTime(booking.start)}</strong></p>
       ${booking.location ? `<p>📍 ${booking.location}</p>` : ''}
-      <p style="text-align: center; color: #6c757d; font-size: 14px; margin-top: 20px;">🛡️ Scheduled with ProtonScheduler · Privacy-first scheduling</p>
+      <p style="text-align: center; color: #6c757d; font-size: 14px; margin-top: 20px;">🛡️ Scheduled with SolidScheduler · Privacy-first scheduling</p>
     </div>
   </div>
 </body>

@@ -104,7 +104,7 @@ check_header() {
 
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
-echo "  ProtonScheduler Smoke Tests"
+echo "  SolidScheduler Smoke Tests"
 echo "  Target: $BASE_URL"
 echo "  Time:   $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "═══════════════════════════════════════════════════════════════"
@@ -119,7 +119,7 @@ echo ""
 # ── 2. API Info ───────────────────────────────────────────────────────────
 echo "API Info"
 check "GET /api returns 200" 200 "$BASE_URL/api"
-check_contains "API name present" "ProtonScheduler" "$BASE_URL/api"
+check_contains "API name present" "SolidScheduler" "$BASE_URL/api"
 echo ""
 
 # ── 3. Auth Endpoints ─────────────────────────────────────────────────────
