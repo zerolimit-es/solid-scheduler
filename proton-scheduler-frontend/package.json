@@ -11,14 +11,14 @@
     "@simplewebauthn/browser": "^13.3.0",
     "@zerolimit/packages": "git+https://github.com/zerolimit-es/solid-scheduling-tools.git",
     "lucide-react": "1.30.0",
-    "react": "^18.3.1",
+    "react": "^19.2.8",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@rolldown/pluginutils": "^1.0.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/react": "^18.3.3",
+    "@types/react": "^19.2.18",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^6.0.5",
     "autoprefixer": "^10.5.4",
