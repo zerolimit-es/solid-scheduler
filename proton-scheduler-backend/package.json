@@ -30,7 +30,7 @@
     "cookie-session": "^2.1.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
-    "express": "^4.21.0",
+    "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "express-session": "^1.19.0",
     "helmet": "^8.3.0",
