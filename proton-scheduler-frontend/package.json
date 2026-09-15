@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/browser": "^14.0.0",
     "@zerolimit/packages": "git+https://github.com/zerolimit-es/solid-scheduling-tools.git",
     "lucide-react": "1.44.0",
     "react": "^19.3.0",
