@@ -9,7 +9,7 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 # Install git and openssh for GitHub dependency resolution via deploy key
-RUN apk add --no-cache git openssh-client
+RUN apk add --no-cache git openssh-client python3 make
 
 # Copy package files
 COPY package*.json ./
