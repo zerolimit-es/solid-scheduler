@@ -34,7 +34,8 @@ async function rejectLogin(req) {
   }
   if (req.session) {
     for (const key of ['webId', 'solidSessionId', 'podUrl', 'tenantId', 'oidcIssuer',
-      'mfaPending', 'mfaVerified', 'returnTo']) {
+      'mfaPending', 'mfaVerified', 'mfaVerifiedWebId', 'passkeyVerifiedAt', 'passkeyVerifiedFor',
+      'returnTo']) {
       delete req.session[key];
     }
   }
@@ -213,9 +214,12 @@ const router = createAuthRouter({
     })();
 
     // ── MFA check: if user has passkeys, flag MFA as pending ──
-    // Skip MFA if the session already passed verification (e.g. Pod reconnect
-    // after an earlier successful passkey check in the same session).
-    if (req.session?.mfaVerified) {
+    // Skip MFA only if this session already passed the passkey check *for this
+    // WebID* (e.g. a Pod reconnect). The cookie session outlives a switch to
+    // another account, so an unbound flag let one account's passkey check
+    // skip the next account's.
+    delete req.session.mfaVerified; // legacy unbound flag
+    if (req.session?.mfaVerifiedWebId && req.session.mfaVerifiedWebId === webId) {
       console.log('[Auth] MFA already verified this session, skipping challenge');
     } else {
       try {

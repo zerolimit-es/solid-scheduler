@@ -1,5 +1,5 @@
 import React from 'react';
-import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
+import { startRegistration, startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { KeyRound } from 'lucide-react';
 import { api } from '../../services/api';
 import { LoaderIcon } from '../common/Icons';
@@ -13,7 +13,7 @@ function formatDate(value) {
 }
 
 function describeError(err) {
-  if (err?.name === 'NotAllowedError') return 'Passkey setup was cancelled or timed out.';
+  if (err?.name === 'NotAllowedError') return 'The passkey prompt was cancelled or timed out.';
   if (err?.name === 'InvalidStateError') return 'This device already has a passkey for your account.';
   return err?.message || 'Something went wrong. Please try again.';
 }
@@ -45,12 +45,29 @@ export default function SecurityCard() {
 
   React.useEffect(() => { load(); }, [load]);
 
+  // Adding a passkey when you already have one, or removing one, needs a
+  // fresh check with an existing passkey. The server says so with 403
+  // passkey_reauth_required; ask for the passkey, then retry once.
+  const withPasskeyCheck = async (action) => {
+    try {
+      return await action();
+    } catch (err) {
+      if (err?.data?.error !== 'passkey_reauth_required') throw err;
+      setNotice('First, confirm it\'s you with one of your existing passkeys.');
+      const options = await api.passkey.authOptions();
+      const assertion = await startAuthentication({ optionsJSON: options });
+      await api.passkey.authVerify(assertion);
+      setNotice(null);
+      return action();
+    }
+  };
+
   const handleAdd = async () => {
     setAdding(true);
     setError(null);
     setNotice(null);
     try {
-      const options = await api.passkey.registerOptions();
+      const options = await withPasskeyCheck(() => api.passkey.registerOptions());
       const credential = await startRegistration({ optionsJSON: options });
       await api.passkey.registerVerify(credential, deviceName.trim() || undefined);
       setDeviceName('');
@@ -75,7 +92,7 @@ export default function SecurityCard() {
     setError(null);
     setNotice(null);
     try {
-      await api.passkey.remove(pk.id);
+      await withPasskeyCheck(() => api.passkey.remove(pk.id));
       await load();
     } catch (err) {
       setError(describeError(err));

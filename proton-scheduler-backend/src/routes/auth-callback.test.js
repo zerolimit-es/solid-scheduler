@@ -51,7 +51,9 @@ before(async () => {
   const app = express();
   app.use(cookieSession({ name: 's', secret: 'test-secret' }));
   app.use((req, _res, next) => {
-    // Simulate the state left by /login with the chosen issuer.
+    // Simulate the state left by /login with the chosen issuer, plus any
+    // earlier session state the test passes in `prior`.
+    if (req.query.prior) Object.assign(req.session, JSON.parse(Buffer.from(req.query.prior, 'base64url').toString()));
     req.session.oidcIssuer = req.query.issuer;
     req.session.solidSessionId = 'sid-1';
     req.solidSession = {
@@ -73,9 +75,10 @@ after(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-async function callback(issuer) {
+async function callback(issuer, prior) {
+  const priorParam = prior ? `&prior=${Buffer.from(JSON.stringify(prior)).toString('base64url')}` : '';
   const res = await realFetch(
-    `${baseUrl}/api/auth/callback?code=x&state=y&issuer=${encodeURIComponent(issuer)}`,
+    `${baseUrl}/api/auth/callback?code=x&state=y&issuer=${encodeURIComponent(issuer)}${priorParam}`,
     { redirect: 'manual' }
   );
   const cookie = res.headers.get('set-cookie') || '';
@@ -110,5 +113,36 @@ describe('OIDC callback issuer binding', () => {
     assert.ok(tenant, 'tenant created by the accepted login');
     const { session } = await callback('https://real-idp.example');
     assert.equal(session.tenantId, tenant.id);
+  });
+});
+
+describe('MFA skip is bound to the account that passed it (#73)', () => {
+  before(async () => {
+    // Give the victim a passkey, so sign-in requires the passkey check
+    const { getDb, getTenantByWebId } = await import('../cloud/models/database.js');
+    const tenant = getTenantByWebId(VICTIM);
+    getDb().prepare('INSERT INTO passkeys (id, tenant_id, credential_id, public_key) VALUES (?, ?, ?, ?)')
+      .run('pk-victim', tenant.id, 'cred-victim', Buffer.from('k'));
+  });
+
+  it("doesn't skip the victim's passkey check after another account passed its own", async () => {
+    const { location, session } = await callback('https://real-idp.example', {
+      mfaVerifiedWebId: 'https://attacker.example/profile/card#me',
+      passkeyVerifiedAt: Date.now(),
+      passkeyVerifiedFor: 'attacker-tenant',
+    });
+    assert.equal(new URL(location).searchParams.get('login'), 'mfa-required');
+    assert.equal(session.mfaPending, true);
+  });
+
+  it('ignores the old unbound mfaVerified flag', async () => {
+    const { location, session } = await callback('https://real-idp.example', { mfaVerified: true });
+    assert.equal(new URL(location).searchParams.get('login'), 'mfa-required');
+    assert.equal(session.mfaVerified, undefined);
+  });
+
+  it('still skips it on a reconnect by the same account', async () => {
+    const { location } = await callback('https://real-idp.example', { mfaVerifiedWebId: VICTIM });
+    assert.equal(new URL(location).searchParams.get('login'), 'success');
   });
 });

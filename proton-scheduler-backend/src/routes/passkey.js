@@ -154,8 +154,56 @@ export function requireOwnCredential(req, res, next) {
   next();
 }
 
+// ── Fresh passkey check for passkey changes ──
+//
+// Removing a passkey, or adding one while the account already has some,
+// changes what protects the account: removing the last passkey turns the
+// sign-in check off. A signed-in session alone isn't enough for that (an
+// unlocked computer, a stolen cookie), so these need a passkey check within
+// the last few minutes. The first passkey needs none.
+
+export const PASSKEY_REAUTH_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * On a successful passkey check (sign-in or re-check), record it in the
+ * session, bound to the account that passed it: the cookie session survives
+ * signing in to another account in the same browser.
+ */
+export function recordPasskeyVerification(req, res, next) {
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400 && body?.success && body?.verified && req.session) {
+      req.session.passkeyVerifiedAt = Date.now();
+      req.session.passkeyVerifiedFor = String(getUserId(req));
+      // Lets a Pod reconnect skip the sign-in challenge, for this WebID only
+      req.session.mfaVerifiedWebId = req.solidSession?.info?.webId || req.session.webId;
+    }
+    return json(body);
+  };
+  next();
+}
+
+export function requireRecentPasskey(req, res, next) {
+  const userId = getUserId(req);
+  if (!userId) return next(); // the router answers with its own error
+  if (credentialStore.getByUser(userId).length === 0) return next();
+
+  const verifiedAt = Number(req.session?.passkeyVerifiedAt);
+  const age = Date.now() - verifiedAt;
+  const sameAccount = req.session?.passkeyVerifiedFor === String(userId);
+  if (sameAccount && Number.isFinite(verifiedAt) && age >= 0 && age <= PASSKEY_REAUTH_WINDOW_MS) return next();
+
+  return res.status(403).json({
+    error: 'passkey_reauth_required',
+    message: 'Confirm with one of your passkeys first.',
+  });
+}
+
 const router = Router();
-router.post('/auth-verify', requireOwnCredential);
+router.post('/auth-verify', requireOwnCredential, recordPasskeyVerification);
+router.get('/register-options', requireRecentPasskey);
+router.post('/register-verify', requireRecentPasskey);
+router.delete('/:id', requireRecentPasskey);
 router.use(passkeyRouter);
 
 export default router;

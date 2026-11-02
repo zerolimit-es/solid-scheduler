@@ -196,18 +196,6 @@ app.get('/api/csrf-token', (req, res) => {
 });
 
 // Core routes
-// Mark session as MFA-verified after successful passkey auth-verify,
-// so Pod reconnect doesn't re-trigger the passkey challenge.
-app.use('/api/auth/passkey/auth-verify', (req, res, next) => {
-  const origJson = res.json.bind(res);
-  res.json = (body) => {
-    if (body?.verified && body?.success) {
-      req.session.mfaVerified = true;
-    }
-    return origJson(body);
-  };
-  next();
-});
 app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/auth/callback', rejectedLoginRedirect);
 app.use('/api/auth', authRoutes);

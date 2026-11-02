@@ -76,10 +76,15 @@ export async function apiFetch(endpoint, options = {}) {
   try {
     let response = await doFetch();
 
-    // Stale/missing token (e.g. session rotated) — refresh it and retry once
+    // Stale/missing token (e.g. session rotated) — refresh it and retry once.
+    // Only for CSRF failures: other 403s (e.g. "confirm with a passkey first")
+    // would just fail again.
     if (response.status === 403 && needsCsrf) {
-      csrfToken = null;
-      response = await doFetch();
+      const data = await response.clone().json().catch(() => null);
+      if (data?.message === 'CSRF token missing or invalid') {
+        csrfToken = null;
+        response = await doFetch();
+      }
     }
 
     const contentType = response.headers.get('content-type');
