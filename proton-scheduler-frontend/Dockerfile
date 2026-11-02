@@ -10,7 +10,7 @@
 # =============================================================================
 # Stage 1: Dependencies
 # =============================================================================
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN --mount=type=ssh rm -f package-lock.json && npm install && npm cache clean -
 # =============================================================================
 # Stage 2: Builder
 # =============================================================================
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Mirror the repo layout so Vite's ../cloud/frontend alias resolves correctly
 WORKDIR /workspace/proton-scheduler-frontend
@@ -50,7 +50,7 @@ RUN npm run build
 # =============================================================================
 # Stage 3: Development (for local development with hot reload)
 # =============================================================================
-FROM node:20-alpine AS development
+FROM node:22-alpine AS development
 
 WORKDIR /workspace/proton-scheduler-frontend
 

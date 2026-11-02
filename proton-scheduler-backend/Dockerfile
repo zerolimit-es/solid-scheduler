@@ -4,7 +4,7 @@
 # =============================================================================
 # Stage 1: Dependencies
 # =============================================================================
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN --mount=type=ssh npm install --omit=dev --install-links && npm cache clean -
 # =============================================================================
 # Stage 2: Development (for local development with hot reload)
 # =============================================================================
-FROM node:20-alpine AS development
+FROM node:22-alpine AS development
 
 WORKDIR /app
 
@@ -43,7 +43,7 @@ CMD ["npm", "run", "dev"]
 # =============================================================================
 # Stage 3: Production
 # =============================================================================
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 # Add labels for container identification
 LABEL org.opencontainers.image.title="SolidScheduler Backend"
