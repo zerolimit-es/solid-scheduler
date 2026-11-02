@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@simplewebauthn/browser": "^14.0.0",
-    "@zerolimit/packages": "git+https://github.com/zerolimit-es/solid-scheduling-tools.git",
+    "@zerolimit/packages": "git+https://github.com/zerolimit-es/solid-scheduling-tools.git#a5c62f3be9d5df5e4a4a6a63f429996c08b56b2c",
     "lucide-react": "^1.65.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
