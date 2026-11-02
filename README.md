@@ -65,7 +65,7 @@ make dev      # Start frontend dev server (Vite)
 
 ```
 solid-scheduler/
-├── proton-scheduler-backend/     # Express API (Node 20, ESM)
+├── proton-scheduler-backend/     # Express API (Node 22, ESM)
 │   ├── src/
 │   │   ├── config/               # Configuration
 │   │   ├── middleware/           # auth, validate (Zod), rateLimit
@@ -104,7 +104,7 @@ solid-scheduler/
 
 | Layer | Technology |
 |---|---|
-| Runtime | Node.js 20 LTS, Express (ESM) |
+| Runtime | Node.js 22 LTS, Express (ESM) |
 | Frontend | React, Vite, Tailwind CSS v4 |
 | Sessions | Redis (write-through + in-memory fallback) |
 | Auth | Solid OIDC + optional WebAuthn/Passkey MFA |
