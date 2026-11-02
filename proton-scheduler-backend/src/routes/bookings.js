@@ -17,6 +17,7 @@ import { validate, createBookingSchema } from '../middleware/validate.js';
 import { Router } from 'express';
 import { requireAuth, getAuthenticatedFetch } from '../middleware/auth.js';
 import { safeMessage } from '../utils/errorResponse.js';
+import { selectPod, PodNotAllowedError } from '../utils/pod.js';
 import solidService from '../services/solid.js';
 import calendarService from '../services/calendar.js';
 import { generateICS } from '../utils/ics.js';
@@ -72,7 +73,7 @@ router.get('/', requireAuth(), async (req, res) => {
 
     if (fetch) {
       const pods = await solidService.getUserPods(req.user.webId, fetch);
-      const podUrl = pod || pods[0];
+      const podUrl = selectPod(pod, pods);
 
       const options = {};
       if (from) options.from = new Date(from);
@@ -123,7 +124,7 @@ router.get('/', requireAuth(), async (req, res) => {
     });
   } catch (error) {
     console.error('List bookings error:', error);
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to load bookings',
       message: safeMessage(error),
     });
@@ -146,7 +147,7 @@ router.get('/expanded', requireAuth(), async (req, res) => {
 
     const fetch = await getAuthenticatedFetch(req.solidSession);
     const pods = await solidService.getUserPods(req.user.webId, fetch);
-    const podUrl = pod || pods[0];
+    const podUrl = selectPod(pod, pods);
 
     const expanded = await calendarService.getExpandedBookings(
       podUrl,
@@ -163,7 +164,7 @@ router.get('/expanded', requireAuth(), async (req, res) => {
     });
   } catch (error) {
     console.error('Get expanded bookings error:', error);
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to expand bookings',
       message: safeMessage(error),
     });
@@ -262,7 +263,7 @@ router.post('/', requireAuth(), async (req, res) => {
     if (fetch) {
       // ── Happy path: Solid session available → save to Pod ──
       const pods = await solidService.getUserPods(req.user.webId, fetch);
-      const podUrl = req.query.pod || pods[0];
+      const podUrl = selectPod(req.query.pod, pods);
 
       const booking = await calendarService.createBooking(
         {
@@ -412,7 +413,7 @@ router.post('/', requireAuth(), async (req, res) => {
       });
     }
 
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to create booking',
       message: safeMessage(error),
     });
@@ -435,7 +436,7 @@ router.get('/upcoming', requireAuth(), async (req, res) => {
 
     if (fetch) {
       const pods = await solidService.getUserPods(req.user.webId, fetch);
-      const podUrl = pod || pods[0];
+      const podUrl = selectPod(pod, pods);
 
       const bookings = await calendarService.getUpcomingBookings(
         podUrl,
@@ -476,7 +477,7 @@ router.get('/upcoming', requireAuth(), async (req, res) => {
     });
   } catch (error) {
     console.error('Get upcoming bookings error:', error);
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to get upcoming bookings',
       message: safeMessage(error),
     });
@@ -497,7 +498,7 @@ router.get('/stats', requireAuth(), async (req, res) => {
 
     if (fetch) {
       const pods = await solidService.getUserPods(req.user.webId, fetch);
-      const podUrl = req.query.pod || pods[0];
+      const podUrl = selectPod(req.query.pod, pods);
       const stats = await calendarService.getBookingStats(podUrl, fetch);
       return res.json(stats);
     }
@@ -511,7 +512,7 @@ router.get('/stats', requireAuth(), async (req, res) => {
     res.json({ ...stats, source: 'local' });
   } catch (error) {
     console.error('Get stats error:', error);
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to get booking statistics',
       message: safeMessage(error),
     });
@@ -534,7 +535,7 @@ router.get('/:id', requireAuth(), async (req, res) => {
 
     if (fetch) {
       const pods = await solidService.getUserPods(req.user.webId, fetch);
-      const podUrl = req.query.pod || pods[0];
+      const podUrl = selectPod(req.query.pod, pods);
 
       const bookings = await solidService.loadBookings(podUrl, fetch);
       const booking = bookings.find(b => b.id === id);
@@ -589,7 +590,7 @@ router.get('/:id', requireAuth(), async (req, res) => {
     });
   } catch (error) {
     console.error('Get booking error:', error);
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to get booking',
       message: safeMessage(error),
     });
@@ -606,7 +607,7 @@ router.put('/:id', requireAuth(), async (req, res) => {
 
     const fetch = await getAuthenticatedFetch(req.solidSession);
     const pods = await solidService.getUserPods(req.user.webId, fetch);
-    const podUrl = req.query.pod || pods[0];
+    const podUrl = selectPod(req.query.pod, pods);
 
     const updates = {};
     if (title) updates.title = title;
@@ -637,7 +638,7 @@ router.put('/:id', requireAuth(), async (req, res) => {
       });
     }
 
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to update booking',
       message: safeMessage(error),
     });
@@ -654,7 +655,7 @@ router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req
 
     const fetch = await getAuthenticatedFetch(req.solidSession);
     const pods = await solidService.getUserPods(req.user.webId, fetch);
-    const podUrl = req.query.pod || pods[0];
+    const podUrl = selectPod(req.query.pod, pods);
 
     const booking = await calendarService.cancelBookingById(podUrl, id, fetch, {
       reason,
@@ -691,7 +692,7 @@ router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req
       });
     }
 
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to cancel booking',
       message: safeMessage(error),
     });
@@ -706,7 +707,7 @@ router.get('/:id/ics', requireAuth(), async (req, res) => {
     const { id } = req.params;
     const fetch = await getAuthenticatedFetch(req.solidSession);
     const pods = await solidService.getUserPods(req.user.webId, fetch);
-    const podUrl = req.query.pod || pods[0];
+    const podUrl = selectPod(req.query.pod, pods);
 
     const bookings = await solidService.loadBookings(podUrl, fetch);
     const booking = bookings.find(b => b.id === id);
@@ -738,7 +739,7 @@ router.get('/:id/ics', requireAuth(), async (req, res) => {
     res.send(icsContent);
   } catch (error) {
     console.error('Download ICS error:', error);
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to generate ICS',
       message: safeMessage(error),
     });

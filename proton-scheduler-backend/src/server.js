@@ -16,7 +16,7 @@ import { verifyEmailConfig } from './services/email.js';
 import { closeRedis } from './services/redis.js';
 
 // Route imports
-import authRoutes from './routes/auth.js';
+import authRoutes, { rejectedLoginRedirect } from './routes/auth.js';
 import passkeyRoutes from './routes/passkey.js';
 import availabilityRoutes from './routes/availability.js';
 import bookingsRoutes from './routes/bookings.js';
@@ -194,6 +194,7 @@ app.use('/api/auth/passkey/auth-verify', (req, res, next) => {
   next();
 });
 app.use('/api/auth/passkey', passkeyRoutes);
+app.use('/api/auth/callback', rejectedLoginRedirect);
 app.use('/api/auth', authRoutes);
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/bookings', bookingsRoutes);

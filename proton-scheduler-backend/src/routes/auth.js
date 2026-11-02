@@ -12,11 +12,56 @@ import { syncBookingsToPod, syncCalendarEventsToPod, importPodEventsToSQLite } f
 import { getAvailability as getLocalAvailability } from '../cloud/models/bookings-db.js';
 import { getTenantByWebId, getTenantBySlug, updateBookingSlug } from '../cloud/models/database.js';
 import { extractSlug } from '../utils/webid.js';
+import { verifyWebIdIssuer } from '../utils/webid-issuer.js';
 import * as solidService from '../services/solid.js';
 import config from '../config/index.js';
 
 // Re-export solidFetchMap so sync.js can still import it from here
 export { solidFetchMap };
+
+/**
+ * Undo a login the auth router has already completed: end the Solid session,
+ * drop its authenticated fetch, and clear every identity field from the
+ * cookie session. Flags the request so the callback redirect reports failure
+ * (see rejectedLoginRedirect).
+ */
+async function rejectLogin(req) {
+  try {
+    if (req.solidSession) await sessionManager.logout(req.solidSession);
+  } catch (err) {
+    console.warn('[Auth] Could not end rejected Solid session:', err.message);
+  }
+  if (req.session) {
+    for (const key of ['webId', 'solidSessionId', 'podUrl', 'tenantId', 'oidcIssuer',
+      'mfaPending', 'mfaVerified', 'returnTo']) {
+      delete req.session[key];
+    }
+  }
+  delete req.user;
+  delete req.tenant;
+  req.loginRejected = true;
+}
+
+/**
+ * Mount before the auth router on /api/auth/callback. When onCallback has
+ * rejected a login, replace the router's "login=success" redirect with a
+ * failure redirect to the frontend.
+ */
+export function rejectedLoginRedirect(req, res, next) {
+  const originalRedirect = res.redirect.bind(res);
+  res.redirect = (...args) => {
+    if (req.loginRejected) {
+      const query = new URLSearchParams({
+        login: 'failed',
+        message: 'This identity provider is not authorised for that WebID.',
+      }).toString();
+      const base = config.frontendUrl || '/';
+      return originalRedirect(`${base}${base.includes('?') ? '&' : '?'}${query}`);
+    }
+    return originalRedirect(...args);
+  };
+  next();
+}
 
 const router = createAuthRouter({
   sessionManager,
@@ -32,6 +77,22 @@ const router = createAuthRouter({
 
   // ── After OIDC callback: tenant DB, post-login sync, MFA check ──────────
   onCallback: async (req, { webId, pods, authenticatedFetch }) => {
+    // ── Solid-OIDC: the WebID must name this issuer as its solid:oidcIssuer ──
+    // Must run first, before anything trusts `webId`. The auth router logs
+    // the user in *before* calling this hook and ignores errors it throws, so
+    // on failure we tear the session down ourselves (fail closed).
+    let issuerCheck;
+    try {
+      issuerCheck = await verifyWebIdIssuer(webId, req.session?.oidcIssuer);
+    } catch (err) {
+      issuerCheck = { ok: false, reason: err.message };
+    }
+    if (!issuerCheck.ok) {
+      console.warn('[Auth] Rejected login: WebID/issuer mismatch —', issuerCheck.reason);
+      await rejectLogin(req);
+      return null;
+    }
+
     // Persist Pod URL and OIDC issuer to tenant DB record
     try {
       const tenant = getTenantByWebId(webId);
@@ -96,8 +157,8 @@ const router = createAuthRouter({
           console.warn('[Auth] Pod import skipped:', importErr.message);
         }
 
-        // Phase 2: Sync unsynced bookings + calendar events to Pod
-        const syncResult = await syncBookingsToPod(pods[0], authenticatedFetch, timezone);
+        // Phase 2: Sync this account's unsynced bookings + calendar events to Pod
+        const syncResult = await syncBookingsToPod(pods[0], authenticatedFetch, tenant?.booking_slug, timezone);
         console.log('[Auth] Post-login booking sync:', syncResult.synced, 'synced,', syncResult.failed, 'failed');
 
         if (tenant?.id) {

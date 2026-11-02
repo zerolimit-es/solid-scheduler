@@ -18,6 +18,7 @@ import config from '../config/index.js';
 import { checkLimit } from '../cloud/config/tiers.js';
 import { getUsage, updateBookingSlug, getTenantBySlug } from '../cloud/models/database.js';
 import { safeMessage } from '../utils/errorResponse.js';
+import { selectPod, PodNotAllowedError } from '../utils/pod.js';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.get('/', requireAuth(), async (req, res) => {
     const fetch = await getAuthenticatedFetch(req.solidSession, req.user?.webId || req.session?.webId);
     const pods = req.user?.pods?.length ? req.user.pods : await solidService.getUserPods(req.user.webId, fetch).catch(() => [req.session?.podUrl].filter(Boolean));
     if (pods.length > 0) {
-      const podUrl = req.query.pod || pods[0];
+      const podUrl = selectPod(req.query.pod, pods);
       const availability = await solidService.loadAvailability(podUrl, fetch);
       if (availability) {
         // Guard against cross-tenant contamination: verify Pod data belongs to this tenant
@@ -179,7 +180,7 @@ router.put('/', requireAuth(), async (req, res) => {
     const fetch = await getAuthenticatedFetch(req.solidSession, req.user?.webId || req.session?.webId);
     const pods = req.user?.pods?.length ? req.user.pods : await solidService.getUserPods(req.user.webId, fetch).catch(() => [req.session?.podUrl].filter(Boolean));
     if (pods.length > 0) {
-      const podUrl = req.query.pod || pods[0];
+      const podUrl = selectPod(req.query.pod, pods);
       await solidService.saveAvailability(podUrl, availability, fetch);
       podSaved = true;
       console.log('[Availability] ✓ Saved to Pod');
@@ -222,7 +223,7 @@ router.get('/slots', requireAuth(), async (req, res) => {
       const pods = req.user?.pods?.length
         ? req.user.pods
         : await solidService.getUserPods(req.user.webId, fetch).catch(() => [req.session?.podUrl].filter(Boolean));
-      const podUrl = req.query.pod || pods[0];
+      const podUrl = selectPod(req.query.pod, pods);
       if (podUrl) {
         const podAvail = await solidService.loadAvailability(podUrl, fetch);
         if (podAvail) avail = podAvail;
@@ -297,7 +298,7 @@ router.get('/slots', requireAuth(), async (req, res) => {
     res.json({ date, slots, count: slots.filter(s => !s.isBooked).length });
   } catch (error) {
     console.error('Get slots error:', error);
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to get available slots',
       message: safeMessage(error),
     });
@@ -330,7 +331,7 @@ router.get('/dates', requireAuth(), async (req, res) => {
       return res.json({ year: parseInt(year), month: parseInt(month), availableDates: [], count: 0, source: 'no-auth' });
     }
     const pods = req.user?.pods?.length ? req.user.pods : await solidService.getUserPods(req.user.webId, fetch).catch(() => [req.session?.podUrl].filter(Boolean));
-    const podUrl = pod || pods[0];
+    const podUrl = selectPod(pod, pods);
 
     if (!podUrl) {
       return res.json({ year: parseInt(year), month: parseInt(month), availableDates: [], count: 0, source: 'no-pod' });
@@ -351,7 +352,7 @@ router.get('/dates', requireAuth(), async (req, res) => {
     });
   } catch (error) {
     console.error('Get dates error:', error);
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to get available dates',
       message: safeMessage(error),
     });
@@ -387,7 +388,7 @@ router.post('/public', requireAuth(), async (req, res) => {
 
     const fetch = await getAuthenticatedFetch(req.solidSession, req.user?.webId || req.session?.webId);
     const pods = req.user?.pods?.length ? req.user.pods : await solidService.getUserPods(req.user.webId, fetch).catch(() => [req.session?.podUrl].filter(Boolean));
-    const podUrl = req.query.pod || pods[0];
+    const podUrl = selectPod(req.query.pod, pods);
 
     const publicInfo = req.body;
     
@@ -425,7 +426,7 @@ router.post('/public', requireAuth(), async (req, res) => {
     });
   } catch (error) {
     console.error('Create public page error:', error);
-    res.status(500).json({
+    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to create public booking page',
       message: safeMessage(error),
     });

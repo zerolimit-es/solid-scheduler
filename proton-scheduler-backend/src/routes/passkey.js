@@ -5,6 +5,7 @@
  * (Redis + in-memory fallback) to the generic passkey router.
  */
 
+import { Router } from 'express';
 import { createPasskeyRouter } from '@zerolimit/packages/passkey-mfa/express';
 import { createMemoryChallengeStore } from '@zerolimit/packages/passkey-mfa/core';
 import { getDb } from '../cloud/models/database.js';
@@ -117,14 +118,40 @@ const credentialStore = {
 
 // ── Build the router ──
 
-const router = createPasskeyRouter({
+const getUserId = (req) => req.tenant?.id || req.session?.tenantId;
+
+const passkeyRouter = createPasskeyRouter({
   challengeStore,
   credentialStore,
   rpName: 'SolidScheduler',
   rpId: getRpId(),
   origin: getAllowedOrigins(),
-  getUserId: (req) => req.tenant?.id || req.session?.tenantId,
+  getUserId,
   getWebId: (req) => req.solidSession?.info?.webId || req.session?.webId,
 });
+
+/**
+ * The generic passkey router looks the asserted credential up by credential
+ * ID alone, across every account, and never checks whom it belongs to. On a
+ * multi-user instance that would let a passkey registered on one account
+ * satisfy another account's MFA. Reject any assertion whose credential is not
+ * registered to the account being verified, before the router sees it.
+ */
+export function requireOwnCredential(req, res, next) {
+  const userId = getUserId(req);
+  const credentialId = req.body?.body?.id;
+  // Let the router produce its own errors for missing user / malformed body.
+  if (!userId || typeof credentialId !== 'string') return next();
+
+  const passkey = credentialStore.getByCredentialId(credentialId);
+  if (!passkey || String(passkey.userId) !== String(userId)) {
+    return res.status(400).json({ error: 'Passkey not found' });
+  }
+  next();
+}
+
+const router = Router();
+router.post('/auth-verify', requireOwnCredential);
+router.use(passkeyRouter);
 
 export default router;

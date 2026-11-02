@@ -54,14 +54,20 @@ function naiveLocalToISO(year, month, day, hour, minute, timezone) {
 }
 
 /**
- * Sync all unsynced bookings to the organizer's Pod
+ * Sync the organizer's own unsynced bookings to their Pod
  * @param {string} podUrl - Organizer's Pod URL
  * @param {Function} fetch - Authenticated fetch function from Solid session
+ * @param {string} slug - The organizer's booking slug. Only bookings made on
+ *   this account's booking page are synced; other accounts' bookings must
+ *   never be written to this Pod.
  * @param {string} timezone - Organizer's IANA timezone (e.g. 'Europe/Paris')
  * @returns {Object} Sync results
  */
-export async function syncBookingsToPod(podUrl, fetch, timezone = 'Europe/Paris') {
-  const unsynced = getUnsyncedBookings(null);
+export async function syncBookingsToPod(podUrl, fetch, slug, timezone = 'Europe/Paris') {
+  if (!slug) {
+    return { synced: 0, failed: 0, total: 0 };
+  }
+  const unsynced = getUnsyncedBookings(slug);
 
   if (unsynced.length === 0) {
     return { synced: 0, failed: 0, total: 0 };
