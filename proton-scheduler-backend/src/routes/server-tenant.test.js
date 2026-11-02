@@ -161,3 +161,25 @@ describe('calendar feed token (#67)', () => {
     assert.equal(res.status, 403);
   });
 });
+
+describe('passkey challenges without Redis (#66)', () => {
+  it('keeps the registration challenge until register-verify', async () => {
+    let jar = sessionCookie({ webId: 'https://judy.solidcommunity.net/profile/card#me' });
+    const opts = await fetch(`${baseUrl}/api/auth/passkey/register-options`, { headers: { Cookie: jar } });
+    assert.equal(opts.status, 200);
+    jar = updateJar(jar, opts);
+
+    const csrfRes = await fetch(`${baseUrl}/api/csrf-token`, { headers: { Cookie: jar } });
+    const { csrfToken } = await csrfRes.json();
+    jar = updateJar(jar, csrfRes);
+
+    // A malformed attestation must fail verification, not the challenge lookup.
+    const res = await fetch(`${baseUrl}/api/auth/passkey/register-verify`, {
+      method: 'POST',
+      headers: { Cookie: jar, 'X-CSRF-Token': csrfToken, Origin: FRONTEND, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: { id: 'x', rawId: 'x', type: 'public-key', response: {} } }),
+    });
+    const body = await res.json();
+    assert.notEqual(body.error, 'Challenge expired or not found — try again');
+  });
+});
