@@ -23,6 +23,7 @@ import availabilityRoutes from './routes/availability.js';
 import bookingsRoutes from './routes/bookings.js';
 import publicRoutes from './routes/public.js';
 import calendarFeedRoutes from './routes/calendar-feed.js';
+import calendarRoutes from './routes/calendar.js';
 
 const app = express();
 
@@ -206,6 +207,9 @@ app.use('/api/bookings', bookingsRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/book', publicRoutes);
 app.use('/cal', calendarFeedRoutes);
+// Same public feed under /api, which the bundled reverse proxies route to the backend
+app.use('/api/calendar/feed', calendarFeedRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 // =============================================================================
 // Error Handling

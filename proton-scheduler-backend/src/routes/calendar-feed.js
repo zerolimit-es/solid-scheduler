@@ -1,7 +1,7 @@
 /**
  * ICS Calendar Feed Route (Public, no auth)
  *
- * GET /cal/:token.ics
+ * GET /cal/:token.ics  and  GET /api/calendar/feed/:token.ics
  *
  * Serves a subscribable ICS feed containing all bookings + calendar events
  * for a tenant. Token-based auth (the URL IS the secret).
@@ -11,6 +11,7 @@
  */
 
 import { Router } from 'express';
+import { publicReadLimiter } from '../middleware/rateLimit.js';
 import { getTenantByFeedToken, getCalendarEventsInRange } from '../cloud/models/calendar-events-db.js';
 import { getBookingsBySlug } from '../cloud/models/bookings-db.js';
 import { getDb } from '../cloud/models/database.js';
@@ -21,7 +22,7 @@ const router = Router();
 /**
  * GET /cal/:token.ics — Public ICS feed
  */
-router.get('/:token.ics', (req, res) => {
+router.get('/:token.ics', publicReadLimiter, (req, res) => {
   try {
     const token = req.params.token;
     const tenantId = getTenantByFeedToken(token);
