@@ -76,13 +76,16 @@ export function createBooking(booking) {
   return booking;
 }
 
+/**
+ * Unsynced confirmed bookings for one booking page. The slug is required:
+ * bookings must only ever be synced into the Pod of the account they belong
+ * to, so there is deliberately no "all accounts" mode.
+ */
 export function getUnsyncedBookings(slug) {
-  const db = getDb();
-  if (!slug) {
-    return db.prepare(
-      `SELECT * FROM bookings WHERE synced_to_pod = 0 AND status = 'confirmed' ORDER BY created_at ASC`
-    ).all();
+  if (typeof slug !== 'string' || slug === '') {
+    throw new Error('getUnsyncedBookings requires a booking slug');
   }
+  const db = getDb();
   return db.prepare(
     `SELECT * FROM bookings WHERE slug = ? AND synced_to_pod = 0 AND status = 'confirmed' ORDER BY created_at ASC`
   ).all(slug);
