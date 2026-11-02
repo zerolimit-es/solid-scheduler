@@ -17,6 +17,7 @@ import { validate, createBookingSchema } from '../middleware/validate.js';
 import { Router } from 'express';
 import { requireAuth, getAuthenticatedFetch } from '../middleware/auth.js';
 import { safeMessage } from '../utils/errorResponse.js';
+import { caldav } from '../services/caldav.js';
 import { selectPod, PodNotAllowedError } from '../utils/pod.js';
 import solidService from '../services/solid.js';
 import calendarService from '../services/calendar.js';
@@ -282,6 +283,19 @@ router.post('/', requireAuth(), async (req, res) => {
         incrementUsage(req.tenant.id, 'bookingsPerMonth');
       }
 
+      // Copy to the operator's CalDAV calendar (background; only for CALDAV_BOOKING_SLUG)
+      caldav().bookingCreated(req.tenant?.booking_slug, {
+        id: booking.id,
+        title: booking.title,
+        start: booking.start,
+        end: booking.end,
+        attendeeName: booking.attendee?.name,
+        attendeeEmail: booking.attendee?.email,
+        notes: booking.notes || notes,
+        location: booking.location || location,
+        recurrence: booking.recurrence || null,
+      });
+
       return res.status(201).json({
         success: true,
         message: booking.isRecurring ? 'Recurring booking created' : 'Booking created',
@@ -344,6 +358,17 @@ router.post('/', requireAuth(), async (req, res) => {
     });
 
     bookAndCount(bookingPayload, req.tenant?.id);
+
+    caldav().bookingCreated(slug, {
+      id: bookingId,
+      title,
+      start: startDt,
+      end: endDt,
+      attendeeName: attendee.name,
+      attendeeEmail: attendee.email,
+      notes,
+      location: location || 'Video Call',
+    });
 
     console.log(`[Bookings] Saved to SQLite (Pod session lost): ${bookingId}`);
 
@@ -664,6 +689,12 @@ router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req
       scope,
       occurrenceDate: occurrenceDate ? new Date(occurrenceDate) : null,
     });
+
+    // Remove it from the operator's CalDAV calendar. Cancelling one occurrence
+    // of a series leaves the series event in place.
+    if (!(scope === 'single' && occurrenceDate)) {
+      caldav().bookingCancelled(req.tenant?.booking_slug, id);
+    }
 
     const message = scope === 'single' && occurrenceDate
       ? 'Single occurrence cancelled'

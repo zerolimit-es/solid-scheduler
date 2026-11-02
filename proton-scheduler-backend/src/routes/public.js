@@ -4,6 +4,7 @@ import { bookingLimiter, publicReadLimiter } from '../middleware/rateLimit.js';
 import { Router } from 'express';
 import { generateICS } from '../utils/ics.js';
 import { safeMessage } from '../utils/errorResponse.js';
+import { caldav, naiveToISO } from '../services/caldav.js';
 import {
   initBookingsTable,
   createBooking,
@@ -364,6 +365,18 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
 
     bookAndCount(bookingPayload, organizer?.id, assignedMember, schedulingMode);
 
+    // Copy to the operator's CalDAV calendar (background; only for CALDAV_BOOKING_SLUG)
+    caldav().bookingCreated(slug, {
+      id: bookingId,
+      title: bookingPayload.title,
+      start: naiveToISO(bookingPayload.start, tz),
+      end: naiveToISO(bookingPayload.end, tz),
+      attendeeName: name,
+      attendeeEmail: email,
+      notes,
+      location: 'Video Call',
+    });
+
     const bookingData = {
       id: bookingId,
       title: bookingPayload.title,
@@ -460,6 +473,7 @@ router.delete('/:slug/bookings/:id', bookingLimiter, (req, res) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
     cancelBooking(req.params.id);
+    caldav().bookingCancelled(req.params.slug, req.params.id);
     res.json({ success: true, message: 'Booking cancelled' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to cancel booking', message: safeMessage(error) });

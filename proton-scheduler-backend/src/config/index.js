@@ -54,12 +54,15 @@ export const config = {
     publicProfile: process.env.POD_PUBLIC_PROFILE || 'public-profile.ttl',
   },
 
-  // CalDAV (optional — sync bookings to an external calendar)
+  // CalDAV (optional): copy one account's bookings to a CalDAV calendar.
+  // CALDAV_SERVER_URL is the calendar collection URL. CALDAV_BOOKING_SLUG
+  // names the account (booking page) whose bookings are synced; it is
+  // required so other accounts' bookings never reach this calendar.
   caldav: {
     serverUrl: process.env.CALDAV_SERVER_URL || '',
     username: process.env.CALDAV_USERNAME || '',
     password: process.env.CALDAV_PASSWORD || '',
-    calendarName: process.env.CALDAV_CALENDAR_NAME || '',
+    bookingSlug: (process.env.CALDAV_BOOKING_SLUG || '').trim().toLowerCase(),
     enabled: process.env.CALDAV_ENABLED === 'true',
   },
 };
