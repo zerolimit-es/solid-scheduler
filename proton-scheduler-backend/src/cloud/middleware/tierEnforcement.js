@@ -1,6 +1,6 @@
 import { checkLimit, TIERS } from '../config/tiers.js';
 import * as db from '../models/database.js';
-import { extractDisplayName, extractSlug } from '../../utils/webid.js';
+import { ensureTenant } from '../services/tenants.js';
 
 export function requireFeature(featureKey) {
   return (req, res, next) => {
@@ -100,57 +100,14 @@ export function loadTenant() {
       return res.status(401).json({ error: 'Invalid API key' });
     }
 
-    // Bridge Solid auth → cloud tenant: look up or auto-create tenant by webId
+    // Bridge Solid auth → tenant: look up or create the tenant for this WebID
     if (req.session?.webId) {
-      let tenant = db.getTenantByWebId(req.session.webId);
-      if (!tenant) {
-        // Auto-register a free tenant for this Solid user
-        const webId = req.session.webId;
-        const podUrl = req.session.podUrl || null;
-        const username = extractDisplayName(webId);
-        const subdomain = extractSlug(webId);
-        try {
-
-          // Use webId as email identifier for new tenants
-          // (availability data belongs to other tenants at this point)
-          const email = webId;
-
-          tenant = db.createTenant({ email, webid: webId, solidPodUrl: podUrl, subdomain });
-          console.log(`[Cloud] Auto-registered tenant for Solid user: ${webId} → ${tenant.id}`);
-
-          // Generate a unique booking slug from the WebID
-          let bookingSlug = extractSlug(webId);
-          if (db.getTenantBySlug(bookingSlug)) {
-            bookingSlug = `${bookingSlug}-${Math.random().toString(36).slice(2, 6)}`;
-          }
-          try {
-            db.updateBookingSlug(tenant.id, bookingSlug);
-            console.log(`[Cloud] Assigned booking slug: ${bookingSlug}`);
-          } catch (slugErr) {
-            console.warn('[Cloud] Could not assign booking slug:', slugErr.message);
-          }
-        } catch (err) {
-          if (err.message.includes('UNIQUE constraint failed: tenants.email')) {
-            try {
-              tenant = db.createTenant({ email: webId, webid: webId, solidPodUrl: podUrl, subdomain });
-              console.log('[Cloud] Auto-registered tenant with webId as email:', webId);
-              // Also assign a booking slug for the retry path
-              let retrySlug = extractSlug(webId);
-              if (db.getTenantBySlug(retrySlug)) {
-                retrySlug = `${retrySlug}-${Math.random().toString(36).slice(2, 6)}`;
-              }
-              try { db.updateBookingSlug(tenant.id, retrySlug); } catch (_) {}
-            } catch (retryErr) {
-              console.error('[Cloud] Auto-registration retry failed:', retryErr.message);
-            }
-          } else {
-            console.error('[Cloud] Auto-registration failed:', err.message);
-          }
-        }
-      }
-      if (tenant) {
+      try {
+        const { tenant } = ensureTenant(req.session.webId, { podUrl: req.session.podUrl || null });
         req.session.tenantId = tenant.id;
         req.tenant = tenant;
+      } catch (err) {
+        console.error('[Tenants] Could not load tenant:', err.message);
       }
     }
 
