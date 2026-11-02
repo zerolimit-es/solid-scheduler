@@ -183,3 +183,38 @@ describe('passkey challenges without Redis (#66)', () => {
     assert.notEqual(body.error, 'Challenge expired or not found — try again');
   });
 });
+
+describe('Origin check applies only to requests that carry the session cookie (#74)', () => {
+  const booking = (time) => JSON.stringify({ date: '2030-08-20', time, name: 'Script Client', email: 'script@example.com' });
+  const post = (time, headers = {}) => fetch(`${baseUrl}/api/public/origin-test/book`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: booking(time),
+  });
+
+  it('lets a cookieless client book without an Origin header', async () => {
+    const res = await post('09:00');
+    const body = await res.json();
+    assert.equal(res.status, 201, JSON.stringify(body));
+    assert.equal(body.success, true);
+  });
+
+  it('rejects a cookie-carrying request from a foreign origin', async () => {
+    const res = await post('10:00', { Cookie: sessionCookie({ webId: 'https://kim.solidcommunity.net/profile/card#me' }), Origin: 'https://evil.example' });
+    assert.equal(res.status, 403);
+    assert.equal((await res.json()).message, 'Cross-site request rejected');
+  });
+
+  it('rejects a cookie-carrying request with no Origin or Referer', async () => {
+    const res = await post('11:00', { Cookie: sessionCookie({ webId: 'https://kim.solidcommunity.net/profile/card#me' }) });
+    assert.equal(res.status, 403);
+  });
+
+  it('accepts a cookie-carrying request from the frontend origin', async () => {
+    const res = await post('12:00', { Cookie: sessionCookie({ webId: 'https://kim.solidcommunity.net/profile/card#me' }), Origin: FRONTEND });
+    assert.equal(res.status, 201);
+  });
+
+  it('treats an anonymous cookie (no signed-in user) as a cookie too', async () => {
+    const res = await post('13:00', { Cookie: sessionCookie({ solidSessionId: 'anon' }), Origin: 'https://evil.example' });
+    assert.equal(res.status, 403);
+  });
+});

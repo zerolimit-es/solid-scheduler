@@ -63,8 +63,9 @@ app.use(cors({
 app.set("trust proxy", 1);
 
 // Session handling (for Solid OIDC state)
+const SESSION_COOKIE = 'solid-scheduler-session';
 app.use(cookieSession({
-  name: 'solid-scheduler-session',
+  name: SESSION_COOKIE,
   secret: config.sessionSecret,
   maxAge: 24 * 60 * 60 * 1000,
   secure: config.nodeEnv === 'production',
@@ -89,6 +90,16 @@ app.use(loadTenant());
 // unaffected — without ambient cookie credentials there is nothing for a
 // cross-site attacker to forge. Session cookies are additionally SameSite=Lax.
 
+// Whether the request *arrived with* the session cookie. Checking the session
+// contents instead doesn't work: solidSessionMiddleware() writes a session ID
+// into every request's session, cookie or not, so every request looked
+// cookie-backed and cookieless clients were rejected.
+function arrivedWithSessionCookie(req) {
+  const header = req.headers.cookie;
+  if (!header) return false;
+  return header.split(';').some((part) => part.trim().startsWith(`${SESSION_COOKIE}=`));
+}
+
 const allowedCsrfOrigins = new Set(
   [
     config.frontendUrl,
@@ -104,9 +115,7 @@ const allowedCsrfOrigins = new Set(
 
 app.use((req, res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  const s = req.session;
-  const usesSessionCookie = !!(s && (s.solidSessionId || s.tenantId || s.webId));
-  if (!usesSessionCookie) return next();
+  if (!arrivedWithSessionCookie(req)) return next();
 
   let origin = req.get('Origin') || null;
   if (!origin) {
