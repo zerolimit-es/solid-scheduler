@@ -531,3 +531,54 @@ describe('parseICSEvent', () => {
     assert.equal(parsed.title, original.title);
   });
 });
+
+describe('parseICSCalendar (import)', async () => {
+  const { parseICSCalendar } = await import('./ics.js');
+  const cal = (...events) => ['BEGIN:VCALENDAR', 'VERSION:2.0', ...events.flat(), 'END:VCALENDAR'].join('\r\n');
+  const ev = (...lines) => ['BEGIN:VEVENT', ...lines, 'END:VEVENT'];
+  const parse = (ics) => parseICSCalendar(ics, { timezone: 'Europe/Paris' });
+
+  it('converts UTC times to the organizer timezone', () => {
+    const [e] = parse(cal(ev('UID:a', 'SUMMARY:A', 'DTSTART:20300115T083000Z', 'DTEND:20300115T093000Z')));
+    assert.equal(e.start, '2030-01-15 09:30');
+    assert.equal(e.end, '2030-01-15 10:30');
+    assert.equal(e.allDay, false);
+  });
+
+  it('converts TZID times from their zone, and uses DURATION when there is no DTEND', () => {
+    const [e] = parse(cal(ev('UID:b', 'SUMMARY:B', 'DTSTART;TZID=America/New_York:20300115T090000', 'DURATION:PT1H30M')));
+    assert.equal(e.start, '2030-01-15 15:00');
+    assert.equal(e.end, '2030-01-15 16:30');
+  });
+
+  it('keeps floating times and unknown zone names as local time', () => {
+    const [f, w] = parse(cal(
+      ev('UID:c', 'SUMMARY:C', 'DTSTART:20300115T140000', 'DTEND:20300115T150000'),
+      ev('UID:d', 'SUMMARY:D', 'DTSTART;TZID="Romance Standard Time":20300115T140000', 'DTEND;TZID="Romance Standard Time":20300115T150000'),
+    ));
+    assert.equal(f.start, '2030-01-15 14:00');
+    assert.equal(w.start, '2030-01-15 14:00');
+  });
+
+  it('parses all-day dates with an exclusive end', () => {
+    const [one, multi] = parse(cal(
+      ev('UID:e', 'SUMMARY:Holiday', 'DTSTART;VALUE=DATE:20300120'),
+      ev('UID:f', 'SUMMARY:Trip', 'DTSTART;VALUE=DATE:20300120', 'DTEND;VALUE=DATE:20300123'),
+    ));
+    assert.deepEqual([one.start, one.end, one.allDay], ['2030-01-20 00:00', '2030-01-21 00:00', true]);
+    assert.deepEqual([multi.start, multi.end], ['2030-01-20 00:00', '2030-01-23 00:00']);
+  });
+
+  it('ignores properties of nested components and unescapes text', () => {
+    const [e] = parse(cal(ev('UID:g', 'SUMMARY:Lunch\\, team\; long', 'DTSTART:20300115T120000', 'DTEND:20300115T130000',
+      'TRANSP:TRANSPARENT', 'STATUS:CANCELLED', 'BEGIN:VALARM', 'DESCRIPTION:Reminder', 'SUMMARY:Alarm', 'END:VALARM')));
+    assert.equal(e.title, 'Lunch, team; long');
+    assert.equal(e.description, undefined);
+    assert.equal(e.transparent, true);
+    assert.equal(e.status, 'CANCELLED');
+  });
+
+  it('skips events without a usable start', () => {
+    assert.deepEqual(parse(cal(ev('UID:h', 'SUMMARY:No start'), ev('UID:i', 'SUMMARY:Bad', 'DTSTART:yesterday'))), []);
+  });
+});

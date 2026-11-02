@@ -146,7 +146,8 @@ export const api = {
     createEvent: (data) => apiFetch('/api/calendar/events', { method: 'POST', body: JSON.stringify(data) }),
     updateEvent: (id, data) => apiFetch(`/api/calendar/events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteEvent: (id) => apiFetch(`/api/calendar/events/${id}`, { method: 'DELETE' }),
-    importIcs: (icsContent) => apiFetch('/api/calendar/import', { method: 'POST', body: JSON.stringify({ icsContent }) }),
+    // Sent as the raw file: calendar exports can exceed the JSON body limit
+    importIcs: (icsContent) => apiFetch('/api/calendar/import', { method: 'POST', body: icsContent, headers: { 'Content-Type': 'text/calendar' } }),
     getFeedToken: () => apiFetch('/api/calendar/feed-token'),
     regenerateFeedToken: () => apiFetch('/api/calendar/feed-token/regenerate', { method: 'POST' }),
   },

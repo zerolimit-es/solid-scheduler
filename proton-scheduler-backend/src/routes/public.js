@@ -15,7 +15,7 @@ import {
   getBookingById,
 } from '../cloud/models/bookings-db.js';
 import { getAvailability } from '../cloud/models/bookings-db.js';
-import { getBlockedSlots as getCalendarBlockedSlots } from '../cloud/models/calendar-events-db.js';
+import { getBlockedIntervals, isBlocked } from '../cloud/models/calendar-events-db.js';
 import {
   sendVisitorConfirmation,
   sendOrganizerNotification,
@@ -130,15 +130,16 @@ router.get('/:slug/slots', publicReadLimiter, (req, res) => {
       const duration = avail?.eventDuration || 30;
       const collectiveSlots = getCollectiveSlots(slotOrganizer.id, date, slug, duration);
       const booked = getBookedSlots(slug, date);
-      const calBlocked = slotOrganizer?.id ? getCalendarBlockedSlots(slotOrganizer.id, date) : [];
-      const bookedTimes = new Set([
-        ...booked.map(b => b.start_time),
-        ...calBlocked.map(b => b.start_time),
-      ]);
-      const filtered = collectiveSlots.map(s => ({
-        ...s,
-        isBooked: bookedTimes.has(`${date} ${s.time}`),
-      }));
+      const calBlocked = getBlockedIntervals(slotOrganizer.id, date);
+      const bookedTimes = new Set(booked.map(b => b.start_time));
+      const filtered = collectiveSlots.map(s => {
+        const [h, m] = s.time.split(':').map(Number);
+        const startMin = h * 60 + m;
+        return {
+          ...s,
+          isBooked: bookedTimes.has(`${date} ${s.time}`) || isBlocked(calBlocked, startMin, startMin + duration),
+        };
+      });
       return res.json({ date, slots: filtered, count: filtered.filter(s => !s.isBooked).length });
     }
 
@@ -173,11 +174,8 @@ router.get('/:slug/slots', publicReadLimiter, (req, res) => {
 
     const booked = getBookedSlots(slug, date);
     const organizer = getTenantBySlug(slug);
-    const calBlocked = organizer?.id ? getCalendarBlockedSlots(organizer.id, date) : [];
-    const bookedTimes = new Set([
-      ...booked.map(b => b.start_time),
-      ...calBlocked.map(b => b.start_time),
-    ]);
+    const calBlocked = organizer?.id ? getBlockedIntervals(organizer.id, date) : [];
+    const bookedTimes = new Set(booked.map(b => b.start_time));
     const slots = [];
     for (let m = slotStart; m < slotEnd; m += 30) {
       if (isToday && m <= nowMin + 15) continue;
@@ -185,7 +183,8 @@ router.get('/:slug/slots', publicReadLimiter, (req, res) => {
       const min = m % 60;
       const time = `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
       const key = `${date} ${time}`;
-      const isBooked = bookedTimes.has(key);
+      // Public bookings are 30 minutes long; block any slot an event overlaps
+      const isBooked = bookedTimes.has(key) || isBlocked(calBlocked, m, m + 30);
       const h12 = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
       const ampm = hour >= 12 ? 'PM' : 'AM';
       const displayTime = `${h12}:${min.toString().padStart(2, '0')} ${ampm}`;
@@ -275,6 +274,14 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
     const key = `${date} ${time}`;
     if (existing.some(b => b.start_time === key)) {
       return res.status(409).json({ error: 'Time slot already booked' });
+    }
+    // Refuse times the organizer has blocked in their calendar (the slot list
+    // hides them, but a client could still post one directly)
+    if (organizer?.id) {
+      const [bh, bm] = time.split(':').map(Number);
+      if (isBlocked(getBlockedIntervals(organizer.id, date), bh * 60 + bm, bh * 60 + bm + 30)) {
+        return res.status(409).json({ error: 'Time slot unavailable' });
+      }
     }
 
     // Calculate times

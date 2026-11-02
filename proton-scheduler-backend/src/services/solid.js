@@ -252,6 +252,22 @@ export async function deleteCalendarEventFromPod(eventUrl, fetch) {
   }
 }
 
+/**
+ * Delete a calendar event from the Pod, throwing if it can't be deleted.
+ * A resource that is already gone counts as deleted.
+ * @param {string} eventUrl — Full Pod resource URL
+ * @param {Function} fetch — Authenticated fetch
+ */
+export async function removeCalendarEventFromPod(eventUrl, fetch) {
+  try {
+    await deleteFile(eventUrl, { fetch });
+  } catch (err) {
+    const status = err?.response?.status ?? err?.statusCode;
+    if (status === 404) return;
+    throw err;
+  }
+}
+
 export default {
   getSchedulerPaths,
   initializeSchedulerContainer,
@@ -269,4 +285,5 @@ export default {
   saveCalendarEvent,
   loadCalendarEvents,
   deleteCalendarEventFromPod,
+  removeCalendarEventFromPod,
 };
