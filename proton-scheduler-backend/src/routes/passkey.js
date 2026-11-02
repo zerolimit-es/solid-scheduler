@@ -36,7 +36,10 @@ function getAllowedOrigins() {
 
 const CHALLENGE_TTL = 300; // 5 minutes
 const CHALLENGE_PREFIX = 'passkey:challenge:';
-const memoryChallenges = createMemoryChallengeStore({ ttl: CHALLENGE_TTL });
+// Takes the TTL in seconds as a plain number. Passing an options object made
+// every in-memory challenge expire at once, so without Redis no passkey could
+// be registered or verified.
+const memoryChallenges = createMemoryChallengeStore(CHALLENGE_TTL);
 
 const challengeStore = {
   async store(userId, challenge) {
@@ -74,6 +77,7 @@ function mapRow(row) {
     counter: row.counter,
     transports: row.transports,
     deviceName: row.device_name,
+    createdAt: row.created_at,
     lastUsedAt: row.last_used_at,
   };
 }

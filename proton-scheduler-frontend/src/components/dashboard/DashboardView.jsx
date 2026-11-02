@@ -3,6 +3,7 @@ import { apiFetch } from '../../services/api';
 import { CalendarIcon, ClockIcon, LinkIcon, CheckIcon, LoaderIcon, DownloadIcon, CancelIcon } from '../common/Icons';
 import { AlertTriangle, Check } from 'lucide-react';
 import CalendarFeedCard from './CalendarFeedCard';
+import SecurityCard from './SecurityCard';
 
 export default function DashboardView({
   user, availability, bookings, setBookings, stats, podStatus, setPodStatus,
@@ -185,6 +186,9 @@ export default function DashboardView({
 
         {/* Calendar Feed */}
         <CalendarFeedCard setError={setError} />
+
+        {/* Security: passkeys */}
+        <SecurityCard />
 
         {/* Upcoming Meetings */}
         <div className="bg-[var(--theme-card-bg)] border border-[var(--theme-card-border)] rounded-2xl p-6 backdrop-blur-[10px] shadow-[var(--shadow-sm)] col-span-1 md:col-span-2">
