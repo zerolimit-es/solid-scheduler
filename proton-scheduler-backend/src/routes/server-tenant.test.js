@@ -218,3 +218,65 @@ describe('Origin check applies only to requests that carry the session cookie (#
     assert.equal(res.status, 403);
   });
 });
+
+describe('passkey changes need a recent passkey check (#73)', () => {
+  const OWNER = 'https://olivia.solidcommunity.net/profile/card#me';
+  let tenantId;
+  let otherTenantId;
+
+  before(async () => {
+    // Create both tenants, then give OWNER a passkey
+    await fetch(`${baseUrl}/whoami-not-a-route`, { headers: { Cookie: sessionCookie({ webId: OWNER }) } });
+    await fetch(`${baseUrl}/whoami-not-a-route`, { headers: { Cookie: sessionCookie({ webId: 'https://oscar.solidcommunity.net/profile/card#me' }) } });
+    const sqlite = new Database(DB_FILE);
+    tenantId = sqlite.prepare('SELECT id FROM tenants WHERE webid = ?').get(OWNER).id;
+    otherTenantId = sqlite.prepare('SELECT id FROM tenants WHERE webid = ?').get('https://oscar.solidcommunity.net/profile/card#me').id;
+    sqlite.prepare('INSERT INTO passkeys (id, tenant_id, credential_id, public_key, device_name) VALUES (?, ?, ?, ?, ?)')
+      .run('pk-olivia', tenantId, 'cred-olivia', Buffer.from('k'), 'Laptop');
+    sqlite.close();
+  });
+
+  /** A client for OWNER whose session holds `extra` (e.g. a passkey check). */
+  async function owner(extra = {}) {
+    let jar = sessionCookie({ webId: OWNER, ...extra });
+    const csrfRes = await fetch(`${baseUrl}/api/csrf-token`, { headers: { Cookie: jar } });
+    const { csrfToken } = await csrfRes.json();
+    jar = updateJar(jar, csrfRes);
+    return {
+      registerOptions: () => fetch(`${baseUrl}/api/auth/passkey/register-options`, { headers: { Cookie: jar } }),
+      remove: (id) => fetch(`${baseUrl}/api/auth/passkey/${id}`, {
+        method: 'DELETE', headers: { Cookie: jar, Origin: FRONTEND, 'X-CSRF-Token': csrfToken },
+      }),
+    };
+  }
+
+  it('lets an account with no passkeys add its first one without a check', async () => {
+    const res = await fetch(`${baseUrl}/api/auth/passkey/register-options`, {
+      headers: { Cookie: sessionCookie({ webId: 'https://oscar.solidcommunity.net/profile/card#me' }) },
+    });
+    assert.equal(res.status, 200);
+  });
+
+  it('refuses to add or remove passkeys without a recent check', async () => {
+    const c = await owner();
+    const add = await c.registerOptions();
+    assert.equal(add.status, 403);
+    assert.equal((await add.json()).error, 'passkey_reauth_required');
+    const del = await c.remove('pk-olivia');
+    assert.equal(del.status, 403);
+    assert.equal((await del.json()).error, 'passkey_reauth_required');
+  });
+
+  it("doesn't accept a check that is too old, or one passed for another account", async () => {
+    const stale = await owner({ passkeyVerifiedAt: Date.now() - 6 * 60 * 1000, passkeyVerifiedFor: tenantId });
+    assert.equal((await stale.registerOptions()).status, 403);
+    const other = await owner({ passkeyVerifiedAt: Date.now(), passkeyVerifiedFor: otherTenantId });
+    assert.equal((await other.registerOptions()).status, 403);
+  });
+
+  it('allows changes right after a check by this account', async () => {
+    const c = await owner({ passkeyVerifiedAt: Date.now(), passkeyVerifiedFor: tenantId });
+    assert.equal((await c.registerOptions()).status, 200);
+    assert.equal((await c.remove('pk-olivia')).status, 200);
+  });
+});
