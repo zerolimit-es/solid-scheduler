@@ -57,3 +57,18 @@ export const adminLimiter = rateLimit({
     error: 'Too many admin requests. Please try again later.',
   },
 });
+
+/**
+ * Signed-in calendar writes (blocked time): 60 per 15 minutes per IP.
+ *
+ * Apply to: POST/PUT/DELETE /api/calendar/events, POST /api/calendar/import
+ */
+export const calendarWriteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many calendar changes. Please try again later.',
+  },
+});

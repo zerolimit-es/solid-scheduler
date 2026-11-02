@@ -4,6 +4,7 @@ import { CalendarIcon, ClockIcon, LinkIcon, CheckIcon, LoaderIcon, DownloadIcon,
 import { AlertTriangle, Check } from 'lucide-react';
 import CalendarFeedCard from './CalendarFeedCard';
 import SecurityCard from './SecurityCard';
+import BlockedTimeCard from './BlockedTimeCard';
 
 export default function DashboardView({
   user, availability, bookings, setBookings, stats, podStatus, setPodStatus,
@@ -183,6 +184,9 @@ export default function DashboardView({
             </button>
           </div>
         </div>
+
+        {/* Blocked time: calendar events that hide booking slots */}
+        <BlockedTimeCard />
 
         {/* Calendar Feed */}
         <CalendarFeedCard setError={setError} />

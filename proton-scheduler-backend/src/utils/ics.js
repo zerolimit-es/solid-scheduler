@@ -8,6 +8,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { instantToNaive, zonedToInstant, isValidTimeZone, parseNaive, addDays } from './tz.js';
 
 /**
  * Format a Date object to iCalendar datetime format (UTC with Z suffix)
@@ -411,10 +412,21 @@ function parseICSDate(icsDate) {
  * Parse a full VCALENDAR file containing multiple VEVENTs.
  * Used for ICS import (e.g. from Proton Calendar export).
  *
+ * Times are returned as naive "YYYY-MM-DD HH:MM" strings in `timezone` (the
+ * organizer's timezone), which is how calendar events are stored:
+ *   - UTC times (…Z) are converted to `timezone`;
+ *   - TZID-qualified times are converted from their zone to `timezone`
+ *     (an unknown TZID, e.g. a Windows zone name, is treated as floating);
+ *   - floating times are taken as already in `timezone`;
+ *   - all-day dates (VALUE=DATE) become midnight, with an exclusive end.
+ * A missing DTEND is taken from DURATION, else one day for all-day events;
+ * timed events without either get an `end` equal to `start`.
+ *
  * @param {string} icsContent — Raw ICS text
- * @returns {Array<Object>} Parsed events with { uid, title, start, end, description, location, rrule, allDay }
+ * @param {{ timezone?: string }} [options]
+ * @returns {Array<Object>} { uid, title, start, end, allDay, description, location, rrule, status, transparent }
  */
-export function parseICSCalendar(icsContent) {
+export function parseICSCalendar(icsContent, { timezone = 'UTC' } = {}) {
   if (!icsContent) return [];
 
   // Unfold continuation lines (RFC 5545: lines starting with space/tab are continuations)
@@ -422,94 +434,107 @@ export function parseICSCalendar(icsContent) {
   const lines = unfolded.split(/\r?\n/);
 
   const events = [];
-  let inEvent = false;
+  let depth = 0; // nested components inside a VEVENT (e.g. VALARM)
   let current = null;
 
   for (const line of lines) {
     if (line === 'BEGIN:VEVENT') {
-      inEvent = true;
       current = {};
+      depth = 0;
       continue;
     }
+    if (!current) continue;
+    if (line.startsWith('BEGIN:')) { depth++; continue; }
+    if (line.startsWith('END:') && line !== 'END:VEVENT') { depth = Math.max(0, depth - 1); continue; }
     if (line === 'END:VEVENT') {
-      if (current && (current.title || current.uid)) {
-        // Format dates as naive local strings "YYYY-MM-DD HH:MM" for SQLite storage
-        if (current._startDate) {
-          current.start = dateToNaive(current._startDate);
-          current.allDay = current._allDay || false;
-        }
-        if (current._endDate) {
-          current.end = dateToNaive(current._endDate);
-        }
-        delete current._startDate;
-        delete current._endDate;
-        delete current._allDay;
-        events.push(current);
-      }
-      inEvent = false;
+      const event = finishEvent(current, timezone);
+      if (event) events.push(event);
       current = null;
       continue;
     }
+    if (depth > 0) continue; // properties of a nested component, e.g. VALARM's DESCRIPTION
 
-    if (!inEvent || !current) continue;
-
-    // Split on first colon, handling parameters like DTSTART;VALUE=DATE:20240115
     const colonIdx = line.indexOf(':');
     if (colonIdx < 0) continue;
     const keyPart = line.substring(0, colonIdx);
     const value = line.substring(colonIdx + 1);
-    const baseKey = keyPart.split(';')[0];
+    const [baseKey, ...paramParts] = keyPart.split(';');
+    const params = Object.fromEntries(paramParts.map((p) => {
+      const eq = p.indexOf('=');
+      return [p.slice(0, eq).toUpperCase(), p.slice(eq + 1).replace(/^"|"$/g, '')];
+    }));
 
-    switch (baseKey) {
-      case 'UID':
-        current.uid = value;
-        break;
-      case 'SUMMARY':
-        current.title = unescapeICS(value);
-        break;
-      case 'DESCRIPTION':
-        current.description = unescapeICS(value);
-        break;
-      case 'DTSTART': {
-        const isDateOnly = keyPart.includes('VALUE=DATE') && !keyPart.includes('VALUE=DATE-TIME');
-        current._startDate = parseICSDate(value);
-        current._allDay = isDateOnly;
-        break;
-      }
-      case 'DTEND':
-        current._endDate = parseICSDate(value);
-        break;
-      case 'LOCATION':
-        current.location = unescapeICS(value);
-        break;
-      case 'RRULE':
-        current.rrule = value; // Store raw RRULE string
-        break;
-      case 'STATUS':
-        current.status = value;
-        break;
+    switch (baseKey.toUpperCase()) {
+      case 'UID': current.uid = value; break;
+      case 'SUMMARY': current.title = unescapeICS(value); break;
+      case 'DESCRIPTION': current.description = unescapeICS(value); break;
+      case 'LOCATION': current.location = unescapeICS(value); break;
+      case 'RRULE': current.rrule = value; break;
+      case 'STATUS': current.status = value.toUpperCase(); break;
+      case 'TRANSP': current.transparent = value.toUpperCase() === 'TRANSPARENT'; break;
+      case 'DTSTART': current._start = { value, params }; break;
+      case 'DTEND': current._end = { value, params }; break;
+      case 'DURATION': current._duration = value; break;
     }
   }
 
   return events;
 }
 
-function unescapeICS(str) {
-  return (str || '')
-    .replace(/\\n/g, '\n')
-    .replace(/\\,/g, ',')
-    .replace(/\\;/g, ';')
-    .replace(/\\\\/g, '\\');
+/** Convert one ICS date or date-time value to { naive, allDay } in `timezone`. */
+function icsValueToNaive({ value, params }, timezone) {
+  const v = value.trim();
+  const dateOnly = /^(\d{4})(\d{2})(\d{2})$/.exec(v);
+  if (dateOnly || params.VALUE === 'DATE') {
+    if (!dateOnly) return null;
+    return { naive: `${dateOnly[1]}-${dateOnly[2]}-${dateOnly[3]} 00:00`, allDay: true };
+  }
+  const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/.exec(v);
+  if (!m) return null;
+  const [y, mo, d, h, mi] = m.slice(1, 6).map(Number);
+  if (m[7] === 'Z') {
+    return { naive: instantToNaive(new Date(Date.UTC(y, mo - 1, d, h, mi)), timezone), allDay: false };
+  }
+  if (params.TZID && isValidTimeZone(params.TZID) && params.TZID !== timezone) {
+    return { naive: instantToNaive(zonedToInstant(y, mo, d, h, mi, params.TZID), timezone), allDay: false };
+  }
+  // Floating time, the organizer's own zone, or an unknown zone name
+  return { naive: `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}`, allDay: false };
 }
 
-function dateToNaive(d) {
-  if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const h = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  return `${y}-${m}-${day} ${h}:${min}`;
+/** ISO 8601 duration (e.g. PT1H30M, P1D, P1W) → minutes, or null. */
+function durationToMinutes(value) {
+  const m = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec((value || '').trim());
+  if (!m || m[1] === '-') return null;
+  const [w, d, h, mi] = [m[2], m[3], m[4], m[5]].map((x) => Number(x || 0));
+  return ((w * 7 + d) * 24 + h) * 60 + mi;
+}
+
+function addMinutesNaive(naive, minutes) {
+  const p = parseNaive(naive);
+  const t = new Date(Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute + minutes));
+  return t.toISOString().slice(0, 16).replace('T', ' ');
+}
+
+function finishEvent(raw, timezone) {
+  if (!(raw.title || raw.uid) || !raw._start) return null;
+  const start = icsValueToNaive(raw._start, timezone);
+  if (!start) return null;
+
+  let end = raw._end ? icsValueToNaive(raw._end, timezone) : null;
+  if (!end) {
+    const minutes = durationToMinutes(raw._duration);
+    if (minutes !== null) end = { naive: addMinutesNaive(start.naive, minutes) };
+    else if (start.allDay) end = { naive: `${addDays(start.naive.slice(0, 10), 1)} 00:00` };
+    else end = { naive: start.naive };
+  }
+
+  const { _start, _end, _duration, ...event } = raw;
+  return { ...event, start: start.naive, end: end.naive, allDay: start.allDay };
+}
+
+function unescapeICS(str) {
+  return (str || '').replace(/\\([\\;,nN])/g, (_, c) => (c === 'n' || c === 'N' ? '\n' : c));
 }
 
 export default {

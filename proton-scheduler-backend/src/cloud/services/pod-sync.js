@@ -170,6 +170,8 @@ export async function loadBookingsWithFallback(podUrl, fetch, options = {}) {
  * @returns {Object} { synced, failed, total }
  */
 export async function syncCalendarEventsToPod(podUrl, fetch, timezone = 'Europe/Paris', tenantId = null) {
+  // Only ever push one account's events into this Pod.
+  if (!tenantId) return { synced: 0, failed: 0, total: 0 };
   const unsynced = getUnsyncedCalendarEvents(tenantId);
 
   if (unsynced.length === 0) {
@@ -207,6 +209,11 @@ export async function syncCalendarEventsToPod(podUrl, fetch, timezone = 'Europe/
         location: event.location || '',
       };
 
+      // An event that was synced before and has changed since: replace the
+      // Pod copy (saveCalendarEvent() never overwrites an existing resource).
+      if (event.pod_url && event.pod_url.startsWith(podUrl)) {
+        await solidService.removeCalendarEventFromPod(event.pod_url, fetch);
+      }
       const podResourceUrl = await solidService.saveCalendarEvent(podUrl, podEvent, fetch);
       markCalendarEventSynced(event.id, podResourceUrl);
       synced++;

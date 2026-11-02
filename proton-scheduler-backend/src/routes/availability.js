@@ -11,7 +11,7 @@
 import { Router } from 'express';
 import { requireAuth, getAuthenticatedFetch } from '../middleware/auth.js';
 import { getAvailability as getLocalAvailability, saveAvailability as saveLocalAvailability, getBookedSlots } from '../cloud/models/bookings-db.js';
-import { getBlockedSlots as getCalendarBlockedSlots } from '../cloud/models/calendar-events-db.js';
+import { getBlockedIntervals, isBlocked } from '../cloud/models/calendar-events-db.js';
 import solidService from '../services/solid.js';
 import calendarService from '../services/calendar.js';
 import config from '../config/index.js';
@@ -274,11 +274,8 @@ router.get('/slots', requireAuth(), async (req, res) => {
 
     // Check already-booked slots from SQLite + calendar event blocks
     const booked = slug ? getBookedSlots(slug, date) : [];
-    const calBlocked = req.tenant?.id ? getCalendarBlockedSlots(req.tenant.id, date) : [];
-    const bookedTimes = new Set([
-      ...booked.map(b => b.start_time),
-      ...calBlocked.map(b => b.start_time),
-    ]);
+    const calBlocked = req.tenant?.id ? getBlockedIntervals(req.tenant.id, date) : [];
+    const bookedTimes = new Set(booked.map(b => b.start_time));
 
     const duration = avail.eventDuration || 30;
     const slots = [];
@@ -288,7 +285,7 @@ router.get('/slots', requireAuth(), async (req, res) => {
       const min = m % 60;
       const time = `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
       const key = `${date} ${time}`;
-      const isBooked = bookedTimes.has(key);
+      const isBooked = bookedTimes.has(key) || isBlocked(calBlocked, m, m + duration);
       const h12 = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
       const ampm = hour >= 12 ? 'PM' : 'AM';
       const displayTime = `${h12}:${min.toString().padStart(2, '0')} ${ampm}`;

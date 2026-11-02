@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { getDb } from './database.js';
 import { expandRRule } from '../../utils/rrule.js';
+import { addDays, naiveDiffMinutes } from '../../utils/tz.js';
 
 // ── Lazy prepared statement cache ──
 const stmts = {};
@@ -35,19 +36,22 @@ function s() {
     `SELECT * FROM calendar_events WHERE id = ? AND tenant_id = ?`
   );
 
+  // Events overlapping [from, to), plus all recurring events
   stmts.getRange = db.prepare(
     `SELECT * FROM calendar_events
      WHERE tenant_id = ? AND (
-       (recurrence IS NULL AND start_time >= ? AND start_time <= ?)
+       (recurrence IS NULL AND start_time < ? AND end_time > ?)
        OR recurrence IS NOT NULL
      )
      ORDER BY start_time ASC`
   );
 
+  // Events that overlap [dayStart, nextDayStart), plus every recurring event
+  // (expanded per date below). Naive "YYYY-MM-DD HH:MM" strings sort correctly.
   stmts.getByDate = db.prepare(
     `SELECT * FROM calendar_events
      WHERE tenant_id = ? AND (
-       (recurrence IS NULL AND start_time LIKE ?)
+       (recurrence IS NULL AND start_time < ? AND end_time > ?)
        OR recurrence IS NOT NULL
      )`
   );
@@ -58,10 +62,6 @@ function s() {
 
   stmts.getUnsynced = db.prepare(
     `SELECT * FROM calendar_events WHERE tenant_id = ? AND synced_to_pod = 0 ORDER BY created_at ASC`
-  );
-
-  stmts.getUnsyncedAll = db.prepare(
-    `SELECT * FROM calendar_events WHERE synced_to_pod = 0 ORDER BY created_at ASC`
   );
 
   stmts.markSynced = db.prepare(
@@ -145,11 +145,11 @@ export function getCalendarEvent(tenantId, eventId) {
 }
 
 /**
- * Get calendar events in a date range.
+ * Get calendar events that overlap a range ("YYYY-MM-DD HH:MM" bounds).
  * Also returns recurring events (regardless of range) for client-side expansion.
  */
 export function getCalendarEventsInRange(tenantId, from, to) {
-  return s().getRange.all(tenantId, from, to);
+  return s().getRange.all(tenantId, to, from);
 }
 
 export function getCalendarEventByIcsUid(tenantId, icsUid) {
@@ -158,63 +158,67 @@ export function getCalendarEventByIcsUid(tenantId, icsUid) {
 
 // ── Availability blocking ──
 
+const DAY_MINUTES = 24 * 60;
+
+/** Minutes from `date` 00:00 to a naive timestamp (may be <0 or >1440). */
+function minutesFromDay(date, naive) {
+  return naiveDiffMinutes(`${date} 00:00`, naive);
+}
+
 /**
- * Get blocked time slots for a given date.
- * Mirrors getBookedSlots() signature from bookings-db.js.
- * Expands recurring events for the given date.
+ * Time blocked by calendar events on `date`, in the organizer's timezone.
+ * Every event that overlaps the day counts, including all-day events and
+ * events that started the day before; recurring events are expanded.
  *
  * @param {string} tenantId
- * @param {string} date — 'YYYY-MM-DD'
- * @returns {Array<{start_time: string, end_time: string}>}
+ * @param {string} date 'YYYY-MM-DD'
+ * @returns {Array<{ startMin: number, endMin: number }>} minutes since 00:00, clipped to the day
  */
-export function getBlockedSlots(tenantId, date) {
-  const rows = s().getByDate.all(tenantId, `${date}%`);
-  const slots = [];
+export function getBlockedIntervals(tenantId, date) {
+  if (!tenantId || !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return [];
+  const dayStart = `${date} 00:00`;
+  const nextDayStart = `${addDays(date, 1)} 00:00`;
+  const rows = s().getByDate.all(tenantId, nextDayStart, dayStart);
+  const intervals = [];
+
+  const push = (startMin, endMin) => {
+    const a = Math.max(0, startMin);
+    const b = Math.min(DAY_MINUTES, endMin);
+    if (b > a) intervals.push({ startMin: a, endMin: b });
+  };
 
   for (const row of rows) {
     if (!row.recurrence) {
-      // Non-recurring: already filtered by date via LIKE
-      slots.push({ start_time: row.start_time, end_time: row.end_time });
-    } else {
-      // Recurring: check if this date is an occurrence
-      const rangeStart = `${date} 00:00`;
-      const rangeEnd = `${date} 23:59`;
-      const occurrences = expandRRule(
-        row.recurrence,
-        row.start_time,
-        rangeStart,
-        rangeEnd,
-      );
-      if (occurrences.length > 0) {
-        // Calculate event duration to compute end times
-        const [startDate, startTime] = row.start_time.split(' ');
-        const [endDate, endTime] = row.end_time.split(' ');
-        const startMin = timeToMinutes(startTime);
-        const endMin = timeToMinutes(endTime);
-        const durationMin = endMin - startMin;
-
-        for (const occ of occurrences) {
-          const occDate = formatDate(occ);
-          const occStartTime = `${startTime.split(':')[0].padStart(2, '0')}:${startTime.split(':')[1]}`;
-          const occEndMin = startMin + durationMin;
-          const occEndTime = `${String(Math.floor(occEndMin / 60)).padStart(2, '0')}:${String(occEndMin % 60).padStart(2, '0')}`;
-          slots.push({
-            start_time: `${occDate} ${occStartTime}`,
-            end_time: `${occDate} ${occEndTime}`,
-          });
-        }
-      }
+      push(minutesFromDay(date, row.start_time), minutesFromDay(date, row.end_time));
+      continue;
+    }
+    const duration = naiveDiffMinutes(row.start_time, row.end_time);
+    if (!(duration > 0)) continue;
+    // Occurrences starting on this day or the day before (which may run into it)
+    const occurrences = expandRRule(row.recurrence, row.start_time, `${addDays(date, -1)} 00:00`, `${date} 23:59`);
+    const [, startTime] = row.start_time.split(' ');
+    for (const occ of occurrences) {
+      const occStart = `${formatDate(occ)} ${startTime}`;
+      const startMin = minutesFromDay(date, occStart);
+      push(startMin, startMin + duration);
     }
   }
 
-  return slots;
+  return intervals;
+}
+
+/** Whether [startMin, endMin) overlaps any blocked interval. */
+export function isBlocked(intervals, startMin, endMin) {
+  return intervals.some((b) => startMin < b.endMin && b.startMin < endMin);
 }
 
 // ── Pod sync helpers ──
 
+/** Unsynced events for one account. No "all accounts" mode: events must only
+ * ever be pushed to the Pod of the account they belong to. */
 export function getUnsyncedCalendarEvents(tenantId) {
-  if (tenantId) return s().getUnsynced.all(tenantId);
-  return s().getUnsyncedAll.all();
+  if (!tenantId) throw new Error('getUnsyncedCalendarEvents requires a tenant ID');
+  return s().getUnsynced.all(tenantId);
 }
 
 export function markCalendarEventSynced(id, podUrl) {
@@ -272,11 +276,6 @@ export function clearSyncedCalendarEvents(tenantId, daysOld = 30) {
 }
 
 // ── Helpers ──
-
-function timeToMinutes(time) {
-  const [h, m] = time.split(':').map(Number);
-  return h * 60 + m;
-}
 
 function formatDate(date) {
   const y = date.getFullYear();
