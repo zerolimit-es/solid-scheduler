@@ -30,7 +30,7 @@ import solidService from '../../services/solid.js';
  * @param {string} timezone - IANA timezone (e.g. 'Europe/Paris')
  * @returns {string} ISO 8601 UTC string
  */
-function naiveLocalToISO(year, month, day, hour, minute, timezone) {
+export function naiveLocalToISO(year, month, day, hour, minute, timezone) {
   // Step 1: Treat the naive time as if it were UTC (starting point)
   const naiveAsUTC = Date.UTC(year, month - 1, day, hour, minute, 0);
 

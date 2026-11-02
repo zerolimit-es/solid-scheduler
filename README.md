@@ -11,7 +11,7 @@ Your calendar data belongs to you. SolidScheduler stores scheduling data in your
 - **Persistent sessions** — Redis-backed sessions survive server restarts
 - **Public booking page** — Share a link for others to book time with you
 - **Email notifications** — Booking confirmations and organizer alerts via SMTP
-- **CalDAV calendar sync** — Sync bookings to Nextcloud, Radicale, or any CalDAV server
+- **CalDAV calendar sync** — Copy your bookings to Nextcloud, Radicale, or any CalDAV server
 - **ICS export** — Download .ics calendar files for any booking
 - **Self-hosted** — Run on your own infrastructure, MIT licensed
 

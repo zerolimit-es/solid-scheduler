@@ -138,7 +138,13 @@ Email is optional — if SMTP is not configured, bookings still work but no noti
 
 ## CalDAV Calendar Sync (Optional)
 
-Sync bookings to an external CalDAV calendar so they appear in your calendar app alongside everything else.
+Copy your bookings to an external CalDAV calendar so they appear in your calendar app alongside everything else.
+
+The sync is one way. Each new booking on your booking page is added to the calendar, and cancelling a booking removes it. Changes made in the calendar app are not read back. Cancelling a single occurrence of a recurring booking leaves the series in the calendar.
+
+It copies **one account's** bookings: the booking page named by `CALDAV_BOOKING_SLUG`. On an instance with several accounts, everyone else's bookings, attendee names and email addresses included, stay out of your calendar. If `CALDAV_BOOKING_SLUG` is empty, nothing is synced.
+
+If the CalDAV server is down, bookings still go through; the backend logs a `[CalDAV]` warning for each booking it couldn't copy.
 
 ### Configuration
 
@@ -149,8 +155,12 @@ CALDAV_ENABLED=true
 CALDAV_SERVER_URL=https://your-nextcloud.com/remote.php/dav/calendars/USERNAME/CALENDAR_NAME/
 CALDAV_USERNAME=your-username
 CALDAV_PASSWORD=your-app-password
-CALDAV_CALENDAR_NAME=SolidScheduler
+CALDAV_BOOKING_SLUG=your-booking-slug
 ```
+
+- `CALDAV_SERVER_URL` is the URL of the calendar itself (a CalDAV collection), not the server's root.
+- `CALDAV_BOOKING_SLUG` is the last part of your booking link: for `https://your-domain.com/book/alice`, it's `alice`.
+- Use `https://`. A plain `http://` URL works (useful for a server on your own network), but sends the password unencrypted; the backend logs a warning.
 
 ### Nextcloud setup (~5 minutes)
 
@@ -194,10 +204,10 @@ CALDAV_CALENDAR_NAME=SolidScheduler
 | `SMTP_PASS` | No | — | SMTP password |
 | `SMTP_FROM` | No | — | Sender email address |
 | `CALDAV_ENABLED` | No | `false` | Enable CalDAV calendar sync |
-| `CALDAV_SERVER_URL` | No | — | CalDAV server URL |
-| `CALDAV_USERNAME` | No | — | CalDAV username |
-| `CALDAV_PASSWORD` | No | — | CalDAV password |
-| `CALDAV_CALENDAR_NAME` | No | — | Calendar name on the CalDAV server |
+| `CALDAV_SERVER_URL` | With CalDAV | — | URL of the calendar (CalDAV collection) to copy bookings to |
+| `CALDAV_USERNAME` | With CalDAV | — | CalDAV username |
+| `CALDAV_PASSWORD` | With CalDAV | — | CalDAV password (use an app password where possible) |
+| `CALDAV_BOOKING_SLUG` | With CalDAV | — | Booking page whose bookings are copied; other accounts' bookings are never sent |
 
 ## Updating
 
