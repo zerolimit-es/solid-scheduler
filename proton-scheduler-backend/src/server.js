@@ -12,6 +12,7 @@ import lusca from 'lusca';
 import cookieSession from 'cookie-session';
 import config from './config/index.js';
 import { solidSessionMiddleware } from './middleware/auth.js';
+import { loadTenant } from './cloud/middleware/tierEnforcement.js';
 import { verifyEmailConfig } from './services/email.js';
 import { closeRedis } from './services/redis.js';
 
@@ -72,6 +73,10 @@ app.use(cookieSession({
 
 // Solid session middleware
 app.use(solidSessionMiddleware());
+
+// Tenant for the signed-in WebID (created on first sign-in). Routes key
+// per-account state on req.tenant: booking slug, passkeys, feed tokens, usage.
+app.use(loadTenant());
 
 // =============================================================================
 // CSRF protection

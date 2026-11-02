@@ -12,6 +12,7 @@ import { syncBookingsToPod, syncCalendarEventsToPod, importPodEventsToSQLite } f
 import { getAvailability as getLocalAvailability } from '../cloud/models/bookings-db.js';
 import { getTenantByWebId, getTenantBySlug, updateBookingSlug } from '../cloud/models/database.js';
 import { extractSlug } from '../utils/webid.js';
+import { ensureTenant } from '../cloud/services/tenants.js';
 import { verifyWebIdIssuer } from '../utils/webid-issuer.js';
 import * as solidService from '../services/solid.js';
 import config from '../config/index.js';
@@ -91,6 +92,28 @@ const router = createAuthRouter({
       console.warn('[Auth] Rejected login: WebID/issuer mismatch —', issuerCheck.reason);
       await rejectLogin(req);
       return null;
+    }
+
+    // ── Make sure this WebID has a tenant (first sign-in creates it) ──
+    // Everything below (slug, sync, MFA) is keyed on the tenant. On first
+    // sign-in, claim the booking slug saved in the user's own Pod so an
+    // existing install keeps its booking page, settings and bookings.
+    try {
+      if (!getTenantByWebId(webId)) {
+        let preferredSlug = null;
+        if (pods[0] && authenticatedFetch) {
+          try {
+            const podAvailability = await solidService.loadAvailability(pods[0], authenticatedFetch);
+            preferredSlug = podAvailability?.bookingSlug || null;
+          } catch (podErr) {
+            console.warn('[Auth] Could not read Pod availability for slug:', podErr.message);
+          }
+        }
+        ensureTenant(webId, { podUrl: pods[0] || null, preferredSlug });
+      }
+      req.session.tenantId = getTenantByWebId(webId)?.id;
+    } catch (tenantErr) {
+      console.warn('[Auth] Could not provision tenant:', tenantErr.message);
     }
 
     // Persist Pod URL and OIDC issuer to tenant DB record

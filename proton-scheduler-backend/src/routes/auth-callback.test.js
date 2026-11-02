@@ -93,11 +93,22 @@ describe('OIDC callback issuer binding', () => {
     assert.equal(session.webId, undefined);
     assert.equal(session.solidSessionId, undefined);
     assert.equal(sessionManager.fetchMap.has(VICTIM), false);
+    const { getTenantByWebId } = await import('../cloud/models/database.js');
+    assert.equal(getTenantByWebId(VICTIM), undefined, 'no tenant for a rejected login');
+    assert.equal(session.tenantId, undefined);
   });
 
   it('accepts the issuer listed in the WebID profile', async () => {
     const { location, session } = await callback('https://real-idp.example');
     assert.equal(new URL(location).searchParams.get('login'), 'success');
     assert.equal(session.webId, VICTIM);
+  });
+
+  it('creates the tenant on first sign-in and puts it in the session', async () => {
+    const { getTenantByWebId } = await import('../cloud/models/database.js');
+    const tenant = getTenantByWebId(VICTIM);
+    assert.ok(tenant, 'tenant created by the accepted login');
+    const { session } = await callback('https://real-idp.example');
+    assert.equal(session.tenantId, tenant.id);
   });
 });
