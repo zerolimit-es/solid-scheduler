@@ -28,6 +28,20 @@ function parseTrustProxy(value) {
   return hops;
 }
 
+// SMTP transport security. `secure` means TLS from the first byte (port 465).
+// Port 587 speaks plain text first and upgrades with STARTTLS, so
+// SMTP_SECURE=true there cannot work as written; it is read as "TLS
+// required" instead, which is what it is meant to say.
+function emailSecurity(port) {
+  const wantsTls = process.env.SMTP_SECURE === 'true';
+  if (wantsTls && port === 587) {
+    console.warn('[Email] SMTP_SECURE=true with port 587: using STARTTLS (set SMTP_SECURE=false, or use port 465 for implicit TLS)');
+    return { secure: false, requireTLS: true };
+  }
+  return { secure: wantsTls, requireTLS: false };
+}
+const smtpPort = parseInt(process.env.SMTP_PORT || '1025', 10);
+
 export const config = {
   // Server
   port: parseInt(process.env.PORT || '3001', 10),
@@ -36,6 +50,10 @@ export const config = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   domain: process.env.DOMAIN || null,
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+
+  // Let users set a Pod URL on a private network address (a Pod server on
+  // the same LAN or Docker network as this server). Off by default.
+  allowPrivatePodHosts: process.env.ALLOW_PRIVATE_POD_HOSTS === 'true',
 
   // Session
   sessionSecret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
@@ -50,14 +68,23 @@ export const config = {
     clientSecret: process.env.SOLID_CLIENT_SECRET || undefined,
   },
 
-  // Email (SMTP)
+  // Email (SMTP). One set of settings for every email the app sends.
+  // SMTP_FROM is the sender address; EMAIL_FROM is its older name.
   email: {
     host: process.env.SMTP_HOST || '127.0.0.1',
-    port: parseInt(process.env.SMTP_PORT || '1025', 10),
-    secure: process.env.SMTP_SECURE === 'true',
+    port: smtpPort,
+    ...emailSecurity(smtpPort),
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
-    from: process.env.EMAIL_FROM || 'noreply@solidscheduler.local',
+    from: process.env.SMTP_FROM || process.env.EMAIL_FROM || 'noreply@solidscheduler.local',
+    fromName: process.env.SMTP_FROM_NAME || 'SolidScheduler',
+  },
+
+  // Fallbacks for an account that has not saved a name or email in its
+  // settings (single-user installs set these once for the whole instance).
+  organizer: {
+    name: process.env.ORGANIZER_NAME || '',
+    email: process.env.ORGANIZER_EMAIL || '',
   },
 
   // Pod Paths

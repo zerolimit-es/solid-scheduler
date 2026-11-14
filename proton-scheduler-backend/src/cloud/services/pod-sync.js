@@ -17,9 +17,11 @@ import {
   markBookingSynced,
   getPendingPodCancellations,
   clearPodCancelPending,
+  getAvailability,
 } from '../models/bookings-db.js';
 import { getUnsyncedCalendarEvents, markCalendarEventSynced } from '../models/calendar-events-db.js';
 import solidService from '../../services/solid.js';
+import { organizerIdentity } from '../../utils/organizer.js';
 
 /**
  * Convert a naive local time (from SQLite) to a proper UTC ISO string.
@@ -79,6 +81,7 @@ export async function syncBookingsToPod(podUrl, fetch, slug, timezone = 'Europe/
   }
 
   console.log(`[Pod Sync] Starting sync: ${unsynced.length} bookings to push to Pod`);
+  const host = organizerIdentity(getAvailability(slug));
 
   let synced = 0;
   let failed = 0;
@@ -107,9 +110,11 @@ export async function syncBookingsToPod(podUrl, fetch, slug, timezone = 'Europe/
         end: endISO,
         description: booking.notes || '',
         location: booking.location || 'Video Call',
+        // As recorded when it was booked; older rows have none, so fall back
+        // to the account's current name
         organizer: {
-          name: process.env.ORGANIZER_NAME || 'Organizer',
-          email: process.env.ORGANIZER_EMAIL || '',
+          name: booking.organizer_name || host.name,
+          email: booking.organizer_email || host.email,
         },
         attendee: {
           name: booking.attendee_name,

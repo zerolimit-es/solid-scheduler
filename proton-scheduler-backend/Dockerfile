@@ -24,12 +24,16 @@ FROM node:22-alpine AS development
 
 WORKDIR /app
 
-# Install development tools
-RUN apk add --no-cache git
+# Install development tools (same build tools as the deps stage)
+RUN apk add --no-cache git python3 make
 
 # Copy package files and install all dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm install --install-links
+
+# SQLite database on the /data volume, outside the mounted source tree
+ENV DB_PATH=/data/solid-scheduler.db
+RUN mkdir -p /data
 
 # Copy source code
 COPY . .

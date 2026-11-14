@@ -11,7 +11,9 @@ import helmet from 'helmet';
 import lusca from 'lusca';
 import cookieSession from 'cookie-session';
 import config from './config/index.js';
-import { solidSessionMiddleware } from './middleware/auth.js';
+import { solidSessionMiddleware, requireAuth, sessionManager } from './middleware/auth.js';
+import { checkPublicUrl } from './utils/public-host.js';
+import { enforceSessionLifetime } from './middleware/sessionLifetime.js';
 import { loadTenant } from './cloud/middleware/tierEnforcement.js';
 import { verifyEmailConfig } from './services/email.js';
 import { closeRedis } from './services/redis.js';
@@ -73,8 +75,26 @@ app.use(cookieSession({
   sameSite: 'lax',
 }));
 
+// End sessions that are past their lifetime or were signed out elsewhere.
+// Must run before anything trusts the cookie's identity.
+app.use(enforceSessionLifetime());
+
 // Solid session middleware
 app.use(solidSessionMiddleware());
+
+// A live Solid session only counts together with the cookie that completed
+// its sign-in. A copy of the cookie taken mid-login (before the callback
+// wrote the WebID, the passkey flag and the session lifetime into it) names
+// the same Solid session, and would otherwise be signed in with none of
+// those checks.
+app.use((req, _res, next) => {
+  const live = req.solidSession?.info;
+  if (live?.isLoggedIn && req.session?.webId !== live.webId && !req.path.startsWith('/api/auth/callback')) {
+    delete req.user;
+    req.solidSession = sessionManager.createFreshSession();
+  }
+  next();
+});
 
 // Tenant for the signed-in WebID (created on first sign-in). Routes key
 // per-account state on req.tenant: booking slug, passkeys, feed tokens, usage.
@@ -198,6 +218,20 @@ app.get('/api/csrf-token', (req, res) => {
 // Core routes
 app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/auth/callback', rejectedLoginRedirect);
+// Setting a Pod URL by hand: only for a fully signed-in user (not while a
+// passkey check is pending), and only to a host on the public internet, since
+// the server will send this user's Pod requests there.
+app.put('/api/auth/pod-url', requireAuth(), async (req, res, next) => {
+  if (config.allowPrivatePodHosts) return next();
+  const podUrl = req.body?.podUrl;
+  if (typeof podUrl !== 'string') return next(); // the router answers with its own error
+  const check = await checkPublicUrl(podUrl);
+  if (!check.ok) {
+    console.warn('[Auth] Rejected Pod URL:', check.reason);
+    return res.status(400).json({ error: 'This Pod URL cannot be used: its host is not reachable on the public internet.' });
+  }
+  next();
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/bookings', bookingsRoutes);

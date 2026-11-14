@@ -183,15 +183,6 @@ export function getBookingsBySlug(slug, { limit = 20, upcoming = true } = {}) {
   ).all(slug, limit);
 }
 
-export function getAllUpcomingBookings({ limit = 20 } = {}) {
-  const db = getDb();
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`;
-  return db.prepare(
-    `SELECT * FROM bookings WHERE start_time >= ? AND status = 'confirmed' ORDER BY start_time ASC LIMIT ?`
-  ).all(todayStr, limit);
-}
-
 // ── Availability (SQLite fallback) ──
 export function initAvailabilityTable() {
   const db = getDb();

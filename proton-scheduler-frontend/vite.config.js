@@ -64,7 +64,8 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        // The backend; in Docker (docker-compose.dev.yml) it is another container
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:3001',
         changeOrigin: true,
       },
     },

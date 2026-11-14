@@ -13,7 +13,7 @@
  */
 
 import crypto from 'crypto';
-import { validate, createBookingSchema } from '../middleware/validate.js';
+import { validateCreateBooking } from '../middleware/validate.js';
 import { Router } from 'express';
 import { requireAuth, getAuthenticatedFetch } from '../middleware/auth.js';
 import { safeMessage } from '../utils/errorResponse.js';
@@ -29,7 +29,6 @@ import { requireFeature } from '../cloud/middleware/tierEnforcement.js';
 import { getUsage, incrementUsage, getDb } from '../cloud/models/database.js';
 import {
   createBooking as createBookingInDb,
-  getAllUpcomingBookings,
   getBookingsBySlug,
   getBookingStats as getLocalBookingStats,
   getBookingById,
@@ -38,6 +37,7 @@ import {
   hasOverlappingBooking,
   cancelBookingForSlug,
 } from '../cloud/models/bookings-db.js';
+import { organizerIdentity } from '../utils/organizer.js';
 import { isValidTimeZone, instantToNaive, zonedToInstant, parseNaive } from '../utils/tz.js';
 import { sendVisitorConfirmation, sendOrganizerNotification } from '../cloud/services/email.js';
 
@@ -100,14 +100,11 @@ router.get('/', requireAuth(), async (req, res) => {
       });
     }
 
-    // Fallback: read from SQLite when Pod session is unavailable.
-    // Multi-tenant deployments must scope by the tenant's slug — a tenant
-    // without a booking slug gets an empty list, never other tenants' data.
-    // Only a single-user deployment (no tenant record) may read everything.
+    // Fallback: read from SQLite when Pod session is unavailable. Always
+    // scoped to this account's booking slug: without one (no account could
+    // be loaded) the answer is an empty list, never other accounts' data.
     const slug = req.tenant?.booking_slug;
-    const rows = slug
-      ? getBookingsBySlug(slug, { limit: 50, upcoming: false })
-      : (req.tenant ? [] : getAllUpcomingBookings({ limit: 50 }));
+    const rows = slug ? getBookingsBySlug(slug, { limit: 50, upcoming: false }) : [];
 
     const bookings = rows.map(r => ({
       id: r.id,
@@ -180,7 +177,7 @@ router.get('/expanded', requireAuth(), async (req, res) => {
  * POST /api/bookings
  * Create a new booking — enforces bookingsPerMonth tier limit
  */
-router.post('/', requireAuth(), async (req, res) => {
+router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
   try {
     // -------------------------------------------------------------------------
     // Tier enforcement: bookingsPerMonth
@@ -378,17 +375,25 @@ router.post('/', requireAuth(), async (req, res) => {
 
     // ── Fallback: Solid session lost → save to SQLite ──
     const bookingId = `booking-${crypto.randomUUID()}`;
-    const slug = req.tenant?.booking_slug || 'my-booking';
+    // Without a booking slug there is no account to file the booking under
+    const slug = req.tenant?.booking_slug;
+    if (!slug) {
+      return res.status(503).json({
+        error: 'Account not ready',
+        message: 'Your account could not be loaded. Sign out, sign in again and retry.',
+      });
+    }
     const title = `Meeting with ${attendee.name}`;
 
+    const host = organizerIdentity(pageAvail);
     const bookingPayload = {
       id: bookingId,
       slug,
       title,
       start: startNaive,
       end: endNaive,
-      organizerName: process.env.ORGANIZER_NAME || '',
-      organizerEmail: process.env.ORGANIZER_EMAIL || '',
+      organizerName: host.name,
+      organizerEmail: host.email,
       attendeeName: attendee.name,
       attendeeEmail: attendee.email,
       notes: notes || '',
@@ -425,10 +430,7 @@ router.post('/', requireAuth(), async (req, res) => {
       end: endDt,
       description: notes || '',
       location: location || 'Video Call',
-      organizer: {
-        name: process.env.ORGANIZER_NAME || 'Organizer',
-        email: process.env.ORGANIZER_EMAIL || '',
-      },
+      organizer: host,
       attendee,
       uid: bookingId,
       timezone: bookingAvail?.timezone,
@@ -443,8 +445,7 @@ router.post('/', requireAuth(), async (req, res) => {
       notes: notes || '',
       location: location || 'Video Call',
     };
-    const orgEmail = bookingAvail?.email || bookingAvail?.organizerEmail
-      || req.tenant?.email || process.env.ORGANIZER_EMAIL;
+    const orgEmail = host.email;
 
     Promise.all([
       sendVisitorConfirmation({ booking: bookingData, icsContent }).catch(err => {
@@ -528,8 +529,8 @@ router.get('/upcoming', requireAuth(), async (req, res) => {
     // Fallback: read from SQLite, scoped to the requesting tenant
     const upcomingSlug = req.tenant?.booking_slug;
     const rows = upcomingSlug
-      ? getBookingsBySlug(upcomingSlug, { limit: parseInt(limit), upcoming: true })
-      : (req.tenant ? [] : getAllUpcomingBookings({ limit: parseInt(limit) }));
+      ? getBookingsBySlug(upcomingSlug, { limit: Math.min(Math.max(parseInt(limit, 10) || 10, 1), 200), upcoming: true })
+      : [];
     const bookings = rows.map(r => ({
       id: r.id,
       title: r.title,
@@ -575,7 +576,7 @@ router.get('/stats', requireAuth(), async (req, res) => {
 
     // Fallback: stats from SQLite, scoped to the requesting tenant
     const slug = req.tenant?.booking_slug || null;
-    if (req.tenant && !slug) {
+    if (!slug) {
       return res.json({ thisWeek: 0, thisMonth: 0, upcoming: 0, unsynced: 0, source: 'local' });
     }
     const stats = getLocalBookingStats(slug);
@@ -636,7 +637,7 @@ router.get('/:id', requireAuth(), async (req, res) => {
     // Verify the booking belongs to the requesting user's tenant (by slug match).
     // A tenant without a booking slug owns no bookings — deny rather than leak.
     const tenantSlug = req.tenant?.booking_slug;
-    if (req.tenant && row.slug !== tenantSlug) {
+    if (!tenantSlug || row.slug !== tenantSlug) {
       return res.status(404).json({
         error: 'Booking not found',
         message: `No booking found with ID: ${id}`,

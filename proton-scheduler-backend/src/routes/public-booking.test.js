@@ -41,6 +41,8 @@ function freePort() {
 
 /** A cookie-session cookie pair, signed the way keygrip does (HMAC-SHA1, base64url). */
 function sessionCookie(session) {
+  // A signed-in session carries the ID and sign-in time the server checks
+  if (session.webId && !session.sid) session = { sid: crypto.randomUUID(), loginAt: Date.now(), ...session };
   const value = Buffer.from(JSON.stringify(session)).toString('base64');
   const sig = crypto.createHmac('sha1', SECRET).update(`${COOKIE}=${value}`).digest('base64')
     .replace(/\/|\+|=/g, (c) => ({ '/': '_', '+': '-', '=': '' })[c]);

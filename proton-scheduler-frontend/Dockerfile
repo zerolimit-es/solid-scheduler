@@ -54,9 +54,12 @@ FROM node:22-alpine AS development
 
 WORKDIR /workspace/proton-scheduler-frontend
 
-# Copy package files and install dependencies
+# git is needed to fetch the @zerolimit/packages dependency from GitHub
+RUN apk add --no-cache git
+
+# Copy package files and install dependencies (same way as the deps stage)
 COPY proton-scheduler-frontend/package*.json ./
-RUN npm ci
+RUN rm -f package-lock.json && npm install
 
 # Copy source code
 COPY proton-scheduler-frontend/ ./

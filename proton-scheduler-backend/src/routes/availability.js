@@ -19,6 +19,7 @@ import { checkLimit } from '../cloud/config/tiers.js';
 import { getUsage, changeBookingSlug, SlugTakenError, getTenantBySlug } from '../cloud/models/database.js';
 import { normalizeSlug } from '../cloud/services/tenants.js';
 import { safeMessage } from '../utils/errorResponse.js';
+import { validate, updateAvailabilitySchema } from '../middleware/validate.js';
 import { selectPod, PodNotAllowedError } from '../utils/pod.js';
 
 const router = Router();
@@ -110,7 +111,7 @@ router.get('/', requireAuth(), async (req, res) => {
  * PUT /api/availability
  * Update the authenticated user's availability settings
  */
-router.put('/', requireAuth(), async (req, res) => {
+router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, res) => {
   const availability = req.body;
 
   // Validate

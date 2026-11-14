@@ -130,7 +130,7 @@ Set these in `.env`:
 ```
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
-SMTP_SECURE=true
+SMTP_SECURE=false
 SMTP_USER=your-email@example.com
 SMTP_PASS=your-app-password
 SMTP_FROM=noreply@scheduler.example.com
@@ -213,10 +213,14 @@ CALDAV_BOOKING_SLUG=your-booking-slug
 | `DEFAULT_SOLID_IDP` | No | `https://login.inrupt.com` | Solid identity provider URL |
 | `SMTP_HOST` | No | `127.0.0.1` | SMTP server hostname |
 | `SMTP_PORT` | No | `587` | SMTP server port |
-| `SMTP_SECURE` | No | `true` | Use TLS |
+| `SMTP_SECURE` | No | `false` | `true` for port 465 (TLS from the start); `false` for port 587 (STARTTLS). `true` with port 587 is treated as STARTTLS with TLS required |
 | `SMTP_USER` | No | — | SMTP username |
 | `SMTP_PASS` | No | — | SMTP password |
 | `SMTP_FROM` | No | — | Sender email address |
+| `SMTP_FROM_NAME` | No | `SolidScheduler` | Sender name shown in mail clients |
+| `ORGANIZER_NAME` | No | — | Name used on bookings for accounts that have not saved one in their settings |
+| `ORGANIZER_EMAIL` | No | — | Where booking notifications go for accounts that have not saved an email |
+| `ALLOW_PRIVATE_POD_HOSTS` | No | `false` | Allow users to set a Pod URL on a private network address (a Pod server on your own LAN) |
 | `CALDAV_ENABLED` | No | `false` | Enable CalDAV calendar sync |
 | `CALDAV_SERVER_URL` | With CalDAV | — | URL of the calendar (CalDAV collection) to copy bookings to |
 | `CALDAV_USERNAME` | With CalDAV | — | CalDAV username |
