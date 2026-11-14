@@ -231,3 +231,30 @@ describe('updateAvailabilitySchema', () => {
     assert.equal(result.data.customField, 'hello');
   });
 });
+
+describe('booking date and time must be real', () => {
+  const base = { name: 'Alice', email: 'alice@test.com' };
+  const ok = (date, time) => publicBookingSchema.safeParse({ ...base, date, time }).success;
+
+  it('accepts real dates and 24-hour times', () => {
+    assert.equal(ok('2028-02-29', '00:00'), true);
+    assert.equal(ok('2027-12-31', '23:59'), true);
+  });
+
+  it('rejects impossible dates', () => {
+    assert.equal(ok('2027-13-45', '10:00'), false);
+    assert.equal(ok('2027-02-30', '10:00'), false);
+    assert.equal(ok('2027-00-10', '10:00'), false);
+  });
+
+  it('rejects impossible times', () => {
+    assert.equal(ok('2027-03-01', '99:99'), false);
+    assert.equal(ok('2027-03-01', '24:00'), false);
+    assert.equal(ok('2027-03-01', '12:60'), false);
+  });
+
+  it('applies the same rules to createBookingSchema', () => {
+    assert.equal(createBookingSchema.safeParse({ ...base, date: '2027-13-45', time: '10:00' }).success, false);
+    assert.equal(createBookingSchema.safeParse({ ...base, date: '2027-03-01', time: '99:99' }).success, false);
+  });
+});

@@ -22,6 +22,7 @@ import {
 } from '../cloud/services/email.js';
 import { getTenantBySlug, getUsage, incrementUsage, getDb, getBranding } from '../cloud/models/database.js';
 import { checkLimit } from '../cloud/config/tiers.js';
+import { isValidTimeZone, instantToNaive, parseNaive } from '../utils/tz.js';
 import {
   listActiveTeamMembers,
   getTeamMember,
@@ -37,6 +38,95 @@ try {
   console.log('[Bookings] ✔ Bookings table ready');
 } catch (e) {
   console.error('[Bookings] ✗ Failed to init bookings table:', e.message);
+}
+
+// ── Bookable slots ──────────────────────────────────────────────────────────
+// One set of rules for both the slot list and the booking endpoint, so a
+// time can be booked exactly when the page offers it.
+
+const DEFAULT_TIMEZONE = 'Europe/Paris';
+const DEFAULT_DURATION = 30;
+const MIN_NOTICE_MINUTES = 15;
+const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+/** "HH:MM" → minutes since midnight, or null if it isn't a time of day. */
+function toMinutes(value) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(typeof value === 'string' ? value : '');
+  if (!m) return null;
+  const total = Number(m[1]) * 60 + Number(m[2]);
+  return Number(m[2]) < 60 && total <= 24 * 60 ? total : null;
+}
+
+function toTime(minutes) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function toDisplayTime(minutes) {
+  const hour = Math.floor(minutes / 60) % 24;
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h12}:${String(minutes % 60).padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
+}
+
+/** True for "YYYY-MM-DD" naming a real calendar day. */
+function isRealDate(date) {
+  return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && !!parseNaive(`${date} 00:00`);
+}
+
+/** The booking page's meeting length and timezone, with safe fallbacks. */
+function pageSettings(slug) {
+  const avail = getAvailability(slug);
+  const d = Number(avail?.eventDuration);
+  return {
+    avail,
+    duration: Number.isInteger(d) && d >= 5 && d <= 480 ? d : DEFAULT_DURATION,
+    tz: isValidTimeZone(avail?.timezone) ? avail.timezone : DEFAULT_TIMEZONE,
+  };
+}
+
+/** Working hours for `date` in minutes, or null when the day is switched off. */
+function dayWindow(avail, date) {
+  const [y, m, d] = date.split('-').map(Number);
+  const dayName = DAY_NAMES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const settings = avail?.days?.[dayName] || avail?.[dayName] || null;
+  if (settings && !settings.enabled) return null;
+  const start = toMinutes(settings?.start) ?? 9 * 60;
+  // A booking must end the same day (bookings are stored per day)
+  const end = Math.min(toMinutes(settings?.end) ?? 17 * 60, 24 * 60 - 1);
+  return end > start ? { start, end } : null;
+}
+
+/**
+ * Start times (minutes since midnight) offered on `date`: every `duration`
+ * minutes within working hours, or the team's common slots in collective
+ * mode. Nothing on past days; today only from MIN_NOTICE_MINUTES ahead.
+ */
+function slotStarts(organizer, slug, date, { avail, duration, tz }) {
+  const now = instantToNaive(new Date(), tz);
+  const today = now.slice(0, 10);
+  if (date < today) return [];
+  const earliest = date === today ? toMinutes(now.slice(11)) + MIN_NOTICE_MINUTES : -1;
+
+  let starts = [];
+  if (organizer?.scheduling_mode === 'collective') {
+    starts = getCollectiveSlots(organizer.id, date, slug, duration).map((s) => toMinutes(s.time));
+  } else {
+    const hours = dayWindow(avail, date);
+    if (hours) {
+      for (let m = hours.start; m + duration <= hours.end; m += duration) starts.push(m);
+    }
+  }
+  return starts.filter((m) => m !== null && m > earliest);
+}
+
+/** Existing bookings on `date` as minute ranges. */
+function bookedIntervals(slug, date) {
+  return getBookedSlots(slug, date).map((b) => {
+    const startMin = toMinutes(String(b.start_time).slice(11));
+    if (startMin === null) return null;
+    const sameDay = String(b.end_time).slice(0, 10) === date;
+    const endMin = sameDay ? toMinutes(String(b.end_time).slice(11)) : 24 * 60;
+    return { startMin, endMin: endMin !== null && endMin > startMin ? endMin : startMin + DEFAULT_DURATION };
+  }).filter(Boolean);
 }
 
 // GET /api/public/:slug - booking page info
@@ -119,75 +209,21 @@ router.get('/:slug/slots', publicReadLimiter, (req, res) => {
     const { slug } = req.params;
     const { date } = req.query;
     if (!date) return res.status(400).json({ error: 'Missing date parameter' });
+    if (!isRealDate(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
 
-    // Collective mode: return intersected slots from all team members
-    const slotOrganizer = getTenantBySlug(slug);
-    if (slotOrganizer && slotOrganizer.scheduling_mode === 'collective') {
-      const avail = getAvailability(slug);
-      const duration = avail?.eventDuration || 30;
-      const collectiveSlots = getCollectiveSlots(slotOrganizer.id, date, slug, duration);
-      const booked = getBookedSlots(slug, date);
-      const calBlocked = getBlockedIntervals(slotOrganizer.id, date);
-      const bookedTimes = new Set(booked.map(b => b.start_time));
-      const filtered = collectiveSlots.map(s => {
-        const [h, m] = s.time.split(':').map(Number);
-        const startMin = h * 60 + m;
-        return {
-          ...s,
-          isBooked: bookedTimes.has(`${date} ${s.time}`) || isBlocked(calBlocked, startMin, startMin + duration),
-        };
-      });
-      return res.json({ date, slots: filtered, count: filtered.filter(s => !s.isBooked).length });
-    }
-
-    const [year, month, day] = date.split('-').map(Number);
-    const dateObj = new Date(year, month - 1, day);
-    const dayOfWeek = dateObj.getDay();
-    const dayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-    const dayName = dayNames[dayOfWeek];
-
-    const avail = getAvailability(slug);
-    let daySettings = null;
-    if (avail) {
-      if (avail.days && avail.days[dayName]) daySettings = avail.days[dayName];
-      else if (avail[dayName]) daySettings = avail[dayName];
-    }
-    if (daySettings && !daySettings.enabled) {
-      return res.json({ date, slots: [], count: 0 });
-    }
-
-    const startTime = daySettings?.start || '09:00';
-    const endTime = daySettings?.end || '17:00';
-    const [startH, startM] = startTime.split(':').map(Number);
-    const [endH, endM] = endTime.split(':').map(Number);
-    const slotStart = startH * 60 + startM;
-    const slotEnd = endH * 60 + endM;
-
-    const tz = avail?.timezone || 'Europe/Paris';
-    const nowInTz = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
-    const todayStr = nowInTz.getFullYear() + '-' + String(nowInTz.getMonth()+1).padStart(2,'0') + '-' + String(nowInTz.getDate()).padStart(2,'0');
-    const isToday = date === todayStr;
-    const nowMin = isToday ? nowInTz.getHours() * 60 + nowInTz.getMinutes() : 0;
-
-    const booked = getBookedSlots(slug, date);
     const organizer = getTenantBySlug(slug);
+    const settings = pageSettings(slug);
+    const { duration } = settings;
+    const booked = bookedIntervals(slug, date);
     const calBlocked = organizer?.id ? getBlockedIntervals(organizer.id, date) : [];
-    const bookedTimes = new Set(booked.map(b => b.start_time));
-    const slots = [];
-    for (let m = slotStart; m < slotEnd; m += 30) {
-      if (isToday && m <= nowMin + 15) continue;
-      const hour = Math.floor(m / 60);
-      const min = m % 60;
-      const time = `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
-      const key = `${date} ${time}`;
-      // Public bookings are 30 minutes long; block any slot an event overlaps
-      const isBooked = bookedTimes.has(key) || isBlocked(calBlocked, m, m + 30);
-      const h12 = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const displayTime = `${h12}:${min.toString().padStart(2, '0')} ${ampm}`;
-      slots.push({ time, displayTime, isBooked });
-    }
-    res.json({ date, slots, count: slots.filter(s => !s.isBooked).length });
+
+    // A slot is taken when any booking or blocked time overlaps it
+    const slots = slotStarts(organizer, slug, date, settings).map((m) => ({
+      time: toTime(m),
+      displayTime: toDisplayTime(m),
+      isBooked: isBlocked(booked, m, m + duration) || isBlocked(calBlocked, m, m + duration),
+    }));
+    res.json({ date, duration, slots, count: slots.filter(s => !s.isBooked).length });
   } catch (error) {
     console.error('Get slots error:', error);
     res.status(500).json({ error: 'Failed to get slots', message: safeMessage(error) });
@@ -249,27 +285,38 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
       // collective mode: all members attend, no single assignment
     }
 
-    // Check conflicts
-    const existing = getBookedSlots(slug, date);
+    // The time must be one the page offers: a real date, not in the past,
+    // inside working hours and on the slot grid (the slot list only shows
+    // these, but a client can post anything).
+    if (!isRealDate(date)) {
+      return res.status(400).json({ error: 'Validation failed', fields: { date: 'Date must be a real calendar date' } });
+    }
+    const settings = pageSettings(slug);
+    const { duration, tz } = settings;
+    const startMin = toMinutes(time);
+    if (date < instantToNaive(new Date(), tz).slice(0, 10)) {
+      return res.status(400).json({ error: 'This date is in the past' });
+    }
+    if (startMin === null || !slotStarts(organizer, slug, date, settings).includes(startMin)) {
+      return res.status(409).json({ error: 'Time slot unavailable' });
+    }
+    const endMinTotal = startMin + duration;
+
+    // Refuse anything overlapping an existing booking, or time the organizer
+    // has blocked in their calendar
     const key = `${date} ${time}`;
-    if (existing.some(b => b.start_time === key)) {
+    if (isBlocked(bookedIntervals(slug, date), startMin, endMinTotal)) {
       return res.status(409).json({ error: 'Time slot already booked' });
     }
-    // Refuse times the organizer has blocked in their calendar (the slot list
-    // hides them, but a client could still post one directly)
-    if (organizer?.id) {
-      const [bh, bm] = time.split(':').map(Number);
-      if (isBlocked(getBlockedIntervals(organizer.id, date), bh * 60 + bm, bh * 60 + bm + 30)) {
-        return res.status(409).json({ error: 'Time slot unavailable' });
-      }
+    if (isBlocked(getBlockedIntervals(organizer.id, date), startMin, endMinTotal)) {
+      return res.status(409).json({ error: 'Time slot unavailable' });
     }
 
     // Calculate times
     const [hour, minute] = time.split(':').map(Number);
-    const endMinTotal = hour * 60 + minute + 30;
     const endH = Math.floor(endMinTotal / 60);
     const endM = endMinTotal % 60;
-    const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+    const endTime = toTime(endMinTotal);
 
     // Cryptographically random ID — it doubles as the cancellation/ICS
     // capability token, so it must not be guessable.
@@ -277,8 +324,7 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
     const [year, month, day] = date.split('-').map(Number);
 
     // ICS — use TZID so Proton Mail doesn't warn "Floating times not supported"
-    const bookingAvail = getAvailability(slug);
-    const tz = bookingAvail?.timezone || 'Europe/Paris';
+    const bookingAvail = settings.avail;
     const startICS = `${year}${month.toString().padStart(2,'0')}${day.toString().padStart(2,'0')}T${hour.toString().padStart(2,'0')}${minute.toString().padStart(2,'0')}00`;
     const endICS = `${year}${month.toString().padStart(2,'0')}${day.toString().padStart(2,'0')}T${endH.toString().padStart(2,'0')}${endM.toString().padStart(2,'0')}00`;
     const nowICS = fmtNowUTC();
@@ -311,12 +357,8 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
     ].join('\r\n');
 
     // Display times
-    const h12 = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const endH12 = endH > 12 ? endH - 12 : endH === 0 ? 12 : endH;
-    const endAmpm = endH >= 12 ? 'PM' : 'AM';
-    const startDisplay = `${h12}:${minute.toString().padStart(2,'0')} ${ampm}`;
-    const endDisplay = `${endH12}:${endM.toString().padStart(2,'0')} ${endAmpm}`;
+    const startDisplay = toDisplayTime(startMin);
+    const endDisplay = toDisplayTime(endMinTotal);
 
     // Human-readable date
     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -370,6 +412,7 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
       date: dateDisplay,
       startTime: startDisplay,
       endTime: endDisplay,
+      duration,
       attendee: { name, email },
       assignedMember: assignedMember ? { id: assignedMember.id, name: assignedMember.name, email: assignedMember.email } : null,
       notes: notes || '',

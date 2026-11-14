@@ -200,7 +200,9 @@ router.post('/', requireAuth(), async (req, res) => {
     let { start, end, attendee, notes, location, recurrence } = req.body;
     // Normalize frontend format: { date, time, name, email } -> { start, end, attendee }
     if (!start && req.body.date && req.body.time) {
-      const duration = 30;
+      // The account's own meeting length, same as its public booking page
+      const configured = Number(getAvailability(req.tenant?.booking_slug)?.eventDuration);
+      const duration = Number.isInteger(configured) && configured >= 5 && configured <= 480 ? configured : 30;
       const [h, m] = req.body.time.split(':').map(Number);
       start = `${req.body.date}T${req.body.time}:00`;
       const endH = h + Math.floor((m + duration) / 60);

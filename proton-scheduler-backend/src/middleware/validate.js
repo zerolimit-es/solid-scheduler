@@ -50,10 +50,22 @@ const nameField = z.string()
   // eslint-disable-next-line no-control-regex
   .regex(/^[^\x00-\x1f\x7f]+$/, 'Name contains invalid characters');
 
+/** "YYYY-MM-DD" that names a real calendar day (rejects 2027-13-45, 2027-02-30). */
+const dateField = z.string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD')
+  .refine((value) => {
+    const [y, m, d] = value.split('-').map(Number);
+    const check = new Date(Date.UTC(y, m - 1, d));
+    return check.getUTCFullYear() === y && check.getUTCMonth() === m - 1 && check.getUTCDate() === d;
+  }, 'Date must be a real calendar date');
+
+/** "HH:MM" on a 24-hour clock (rejects 24:00, 12:60). */
+const timeField = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be HH:MM');
+
 /** POST /api/public/:slug/book */
 export const publicBookingSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
-  time: z.string().regex(/^\d{2}:\d{2}$/, 'Time must be HH:MM'),
+  date: dateField,
+  time: timeField,
   name: nameField,
   email: z.string().email('Invalid email address'),
   notes: z.string().max(1000, 'Notes must be under 1000 characters').optional().default(''),
@@ -67,8 +79,8 @@ export const publicBookingSchema = z.object({
 
 /** POST /api/bookings (authenticated) */
 export const createBookingSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
-  time: z.string().regex(/^\d{2}:\d{2}$/, 'Time must be HH:MM'),
+  date: dateField,
+  time: timeField,
   name: nameField,
   email: z.string().email('Invalid email address'),
   notes: z.string().max(1000, 'Notes must be under 1000 characters').optional().default(''),
