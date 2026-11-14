@@ -224,6 +224,65 @@ export function updateBookingSlug(tenantId, bookingSlug) {
   return getTenantStmts().updateBookingSlug.run(normalized, tenantId);
 }
 
+/** Thrown by changeBookingSlug when the wanted slug cannot be claimed. */
+export class SlugTakenError extends Error {
+  constructor(slug) {
+    super(`Booking slug "${slug}" is already taken`);
+    this.name = 'SlugTakenError';
+    this.status = 409;
+  }
+}
+
+function tableExists(d, name) {
+  return !!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+}
+
+/**
+ * Change a tenant's booking slug and carry its data along.
+ *
+ * Bookings and the availability row are keyed by slug, so changing only the
+ * tenant row would leave them behind under the old slug: gone from the
+ * owner's account, and handed to whoever claims that slug next. This moves
+ * them in the same transaction.
+ *
+ * A slug is refused when another tenant holds it, or when rows already exist
+ * under it that are not this tenant's (left over from an earlier rename),
+ * since claiming it would expose them.
+ *
+ * @returns {{ changed: boolean, from: string|null, to: string }}
+ * @throws {SlugTakenError}
+ */
+export function changeBookingSlug(tenantId, bookingSlug) {
+  if (typeof bookingSlug !== 'string' || bookingSlug === '') {
+    throw new Error('changeBookingSlug requires a slug');
+  }
+  const to = bookingSlug.toLowerCase();
+  const d = getDb();
+  return d.transaction(() => {
+    const tenant = d.prepare('SELECT id, booking_slug FROM tenants WHERE id = ?').get(tenantId);
+    if (!tenant) throw new Error('Tenant not found');
+    const from = tenant.booking_slug || null;
+    if (from === to) return { changed: false, from, to };
+
+    const holder = d.prepare('SELECT id FROM tenants WHERE booking_slug = ?').get(to);
+    if (holder && holder.id !== tenantId) throw new SlugTakenError(to);
+
+    const hasBookings = tableExists(d, 'bookings');
+    const hasAvailability = tableExists(d, 'availability');
+    const leftover =
+      (hasBookings && d.prepare('SELECT 1 FROM bookings WHERE slug = ? LIMIT 1').get(to)) ||
+      (hasAvailability && d.prepare('SELECT 1 FROM availability WHERE slug = ? LIMIT 1').get(to));
+    if (leftover) throw new SlugTakenError(to);
+
+    if (from) {
+      if (hasBookings) d.prepare('UPDATE bookings SET slug = ? WHERE slug = ?').run(to, from);
+      if (hasAvailability) d.prepare('UPDATE availability SET slug = ? WHERE slug = ?').run(to, from);
+    }
+    d.prepare('UPDATE tenants SET booking_slug = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(to, tenantId);
+    return { changed: true, from, to };
+  })();
+}
+
 export function updateStripeCustomer(tenantId, stripeCustomerId) {
   return getTenantStmts().updateStripe.run(stripeCustomerId, tenantId);
 }

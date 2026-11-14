@@ -20,10 +20,7 @@ import {
   sendVisitorConfirmation,
   sendOrganizerNotification,
 } from '../cloud/services/email.js';
-// Phase 2 change: import getTenantBySlug (direct index lookup) instead of
-// getTenantByEmail (fragile email-indirection via availability record).
-// getTenantByEmail kept as fallback for tenants who haven't set booking_slug yet.
-import { getTenantBySlug, getTenantByEmail, getUsage, incrementUsage, getDb, getBranding } from '../cloud/models/database.js';
+import { getTenantBySlug, getUsage, incrementUsage, getDb, getBranding } from '../cloud/models/database.js';
 import { checkLimit } from '../cloud/config/tiers.js';
 import {
   listActiveTeamMembers,
@@ -207,30 +204,13 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
       return res.status(400).json({ error: 'Missing required fields: date, time, name, email' });
     }
 
-    // -------------------------------------------------------------------------
-    // Phase 2 fix (Task 12): Direct slug → tenant lookup
-    //
-    // BEFORE (fragile):
-    //   const avail = getAvailability();
-    //   const organizer = avail?.email || avail?.organizerEmail
-    //     ? getTenantByEmail(avail.email || avail.organizerEmail) : null;
-    //
-    // This broke when availability.email ≠ tenant registration email.
-    //
-    // AFTER: Use the URL slug directly — it's already in req.params and
-    // stored on the tenant row via booking_slug column (migration 001).
-    // Falls back to the old email-based lookup for tenants who haven't
-    // had their booking_slug populated yet (gradual migration).
-    // -------------------------------------------------------------------------
-    let organizer = getTenantBySlug(slug);
+    const organizer = getTenantBySlug(slug);
 
+    // A booking page exists only for a slug an account holds. Accepting
+    // bookings for any other slug would park them under a name that a future
+    // account could claim, and send mail on behalf of a page nobody owns.
     if (!organizer) {
-      // Fallback: old email-based lookup for pre-migration tenants
-      const avail = getAvailability();
-      const organizerEmail = avail?.email || avail?.organizerEmail;
-      if (organizerEmail) {
-        organizer = getTenantByEmail(organizerEmail);
-      }
+      return res.status(404).json({ error: 'Booking page not found' });
     }
 
     if (organizer) {

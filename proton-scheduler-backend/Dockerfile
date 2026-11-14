@@ -69,6 +69,9 @@ COPY --chown=nodejs:nodejs . .
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3001
+# SQLite database lives on the /data volume so it survives rebuilds and upgrades
+ENV DB_PATH=/data/solid-scheduler.db
+VOLUME /data
 
 # Expose port
 EXPOSE 3001

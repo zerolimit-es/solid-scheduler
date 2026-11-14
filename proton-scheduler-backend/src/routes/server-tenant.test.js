@@ -190,6 +190,15 @@ describe('Origin check applies only to requests that carry the session cookie (#
     method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: booking(time),
   });
 
+  // Bookings are only accepted for a booking page an account holds: signing
+  // in creates the account, whose slug comes from the WebID ("origin-test").
+  before(async () => {
+    const res = await fetch(`${baseUrl}/api/auth/status`, {
+      headers: { Cookie: sessionCookie({ webId: 'https://origin-test.solidcommunity.net/profile/card#me' }) },
+    });
+    assert.equal(res.status, 200);
+  });
+
   it('lets a cookieless client book without an Origin header', async () => {
     const res = await post('09:00');
     const body = await res.json();
@@ -278,5 +287,74 @@ describe('passkey changes need a recent passkey check (#73)', () => {
     const c = await owner({ passkeyVerifiedAt: Date.now(), passkeyVerifiedFor: tenantId });
     assert.equal((await c.registerOptions()).status, 200);
     assert.equal((await c.remove('pk-olivia')).status, 200);
+  });
+});
+
+describe('booking slug ownership', () => {
+  const LEO = 'https://leo.solidcommunity.net/profile/card#me';
+  const MIA = 'https://mia.solidcommunity.net/profile/card#me';
+  const day = { enabled: true, start: '09:00', end: '17:00' };
+
+  /** A signed-in client: cookie jar + CSRF token, sending the frontend Origin. */
+  async function signIn(webId) {
+    let jar = sessionCookie({ webId });
+    const csrfRes = await fetch(`${baseUrl}/api/csrf-token`, { headers: { Cookie: jar } });
+    const { csrfToken } = await csrfRes.json();
+    jar = updateJar(jar, csrfRes);
+    return (path, options = {}) => fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers: { Cookie: jar, Origin: FRONTEND, 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+    });
+  }
+  const saveSlug = (client, bookingSlug) => client('/api/availability', {
+    method: 'PUT', body: JSON.stringify({ eventDuration: 30, bookingSlug, monday: day }),
+  });
+  const book = (slug, time) => fetch(`${baseUrl}/api/public/${slug}/book`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date: '2030-09-02', time, name: 'Nia Visitor', email: 'nia@example.com' }),
+  });
+  const bookingCount = async (client) => (await (await client('/api/bookings')).json()).count;
+
+  it('refuses bookings for a slug no account holds', async () => {
+    const res = await book('nobody-holds-this', '09:00');
+    assert.equal(res.status, 404);
+    const sqlite = new Database(DB_FILE);
+    const rows = sqlite.prepare("SELECT COUNT(*) AS c FROM bookings WHERE slug = 'nobody-holds-this'").get().c;
+    sqlite.close();
+    assert.equal(rows, 0);
+  });
+
+  it('keeps bookings with the account when its slug changes, and out of reach of the next holder', async () => {
+    const leo = await signIn(LEO);
+    assert.equal((await saveSlug(leo, 'leo-page')).status, 200);
+    assert.equal((await book('leo-page', '09:00')).status, 201);
+    assert.equal((await book('leo-page', '10:00')).status, 201);
+    assert.equal(await bookingCount(leo), 2);
+
+    assert.equal((await saveSlug(leo, 'leo-renamed')).status, 200);
+    assert.equal(await bookingCount(leo), 2, 'bookings follow the rename');
+
+    // The old slug is free again, and comes with nothing of Leo's
+    const mia = await signIn(MIA);
+    assert.equal((await saveSlug(mia, 'leo-page')).status, 200);
+    assert.equal(await bookingCount(mia), 0);
+    assert.equal(await bookingCount(leo), 2);
+
+    // The saved availability moved too
+    const avail = await (await fetch(`${baseUrl}/api/public/leo-renamed/availability`)).json();
+    assert.equal(avail.monday.enabled, true);
+  });
+
+  it("refuses a slug held by another account, or one with someone else's leftover data", async () => {
+    const mia = await signIn(MIA);
+    assert.equal((await saveSlug(mia, 'leo-renamed')).status, 409);
+
+    // Rows left under an unheld slug (e.g. by a rename before this fix)
+    const sqlite = new Database(DB_FILE);
+    sqlite.prepare(`INSERT INTO bookings (id, slug, title, start_time, end_time, attendee_name, attendee_email)
+      VALUES ('orphan-1', 'orphaned-page', 'Old meeting', '2030-09-03 09:00', '2030-09-03 09:30', 'Omar', 'omar@example.com')`).run();
+    sqlite.close();
+    assert.equal((await saveSlug(mia, 'orphaned-page')).status, 409);
+    assert.equal(await bookingCount(mia), 0);
   });
 });

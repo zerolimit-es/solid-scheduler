@@ -195,6 +195,7 @@ CALDAV_BOOKING_SLUG=your-booking-slug
 | `SESSION_SECRET` | Yes | — | 32+ character random string |
 | `DOMAIN` | Caddy only | — | Your domain (used by Caddy for auto-HTTPS) |
 | `FRONTEND_PORT` | No | `0.0.0.0:80` | Frontend port binding; set to `127.0.0.1:3000` behind a reverse proxy |
+| `DB_PATH` | No | `/data/solid-scheduler.db` | SQLite database file; set by the Docker image, keep it on the `/data` volume |
 | `REDIS_URL` | No | `redis://redis:6379` | Redis connection string |
 | `DEFAULT_SOLID_IDP` | No | `https://login.inrupt.com` | Solid identity provider URL |
 | `SMTP_HOST` | No | `127.0.0.1` | SMTP server hostname |
@@ -208,6 +209,34 @@ CALDAV_BOOKING_SLUG=your-booking-slug
 | `CALDAV_USERNAME` | With CalDAV | — | CalDAV username |
 | `CALDAV_PASSWORD` | With CalDAV | — | CalDAV password (use an app password where possible) |
 | `CALDAV_BOOKING_SLUG` | With CalDAV | — | Booking page whose bookings are copied; other accounts' bookings are never sent |
+
+## Data and Backups
+
+Accounts, bookings waiting to be synced, passkeys and blocked time are kept in a SQLite database at `/data/solid-scheduler.db` inside the backend container, on the `backend-data` Docker volume. The volume survives `docker compose down`, rebuilds and upgrades. It is deleted by `docker compose down -v` (and by `make clean`).
+
+To back it up:
+
+```bash
+docker compose exec backend sh -c 'cat /data/solid-scheduler.db' > solid-scheduler-backup.db
+```
+
+For a consistent copy, stop the backend first (`docker compose stop backend`) or take the backup at a quiet moment.
+
+### Upgrading from a version without the data volume
+
+Earlier versions kept the database inside the container itself (`/app/src/data/`), where it was lost whenever the container was recreated. **Before** you rebuild, copy it out of the running container and into the new volume:
+
+```bash
+docker compose stop backend
+docker cp solidscheduler-backend:/app/src/data ./solid-scheduler-data
+git pull
+docker compose up -d --build
+docker compose stop backend
+docker cp ./solid-scheduler-data/. solidscheduler-backend:/data/
+docker compose start backend
+```
+
+If `docker cp` reports that `/app/src/data` does not exist, there is nothing to migrate.
 
 ## Updating
 

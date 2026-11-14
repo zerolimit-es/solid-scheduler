@@ -16,7 +16,8 @@ import solidService from '../services/solid.js';
 import calendarService from '../services/calendar.js';
 import config from '../config/index.js';
 import { checkLimit } from '../cloud/config/tiers.js';
-import { getUsage, updateBookingSlug, getTenantBySlug } from '../cloud/models/database.js';
+import { getUsage, changeBookingSlug, SlugTakenError, getTenantBySlug } from '../cloud/models/database.js';
+import { normalizeSlug } from '../cloud/services/tenants.js';
 import { safeMessage } from '../utils/errorResponse.js';
 import { selectPod, PodNotAllowedError } from '../utils/pod.js';
 
@@ -143,15 +144,20 @@ router.put('/', requireAuth(), async (req, res) => {
   const slug = rawSlug ? rawSlug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : null;
   if (availability.bookingSlug) availability.bookingSlug = slug;
 
-  // Check slug uniqueness before saving
+  // Move the account to the new slug first, taking its bookings and saved
+  // availability along (they are keyed by slug). Refused when the slug is
+  // held by another account or still has someone else's data under it.
   if (slug && req.tenant && req.tenant.booking_slug !== slug) {
     try {
-      const existing = getTenantBySlug(slug);
-      if (existing && existing.id !== req.tenant.id) {
+      changeBookingSlug(req.tenant.id, slug);
+      req.tenant.booking_slug = slug;
+      console.log(`[Availability] Updated tenant booking_slug to "${slug}"`);
+    } catch (err) {
+      if (err instanceof SlugTakenError) {
         return res.status(409).json({ error: 'This booking URL is already taken. Please choose a different one.' });
       }
-    } catch (err) {
-      console.warn('[Availability] Slug uniqueness check failed:', err.message);
+      console.error('[Availability] Could not change booking slug:', err.message);
+      return res.status(500).json({ error: 'Failed to save locally', message: safeMessage(err) });
     }
   }
 
@@ -161,17 +167,6 @@ router.put('/', requireAuth(), async (req, res) => {
   } catch (dbErr) {
     console.error('[Availability] SQLite save failed:', dbErr.message);
     return res.status(500).json({ error: 'Failed to save locally', message: dbErr.message });
-  }
-
-  // Keep tenant's booking_slug in sync so future lookups work
-  if (slug && req.tenant && req.tenant.booking_slug !== slug) {
-    try {
-      updateBookingSlug(req.tenant.id, slug);
-      req.tenant.booking_slug = slug;
-      console.log(`[Availability] Updated tenant booking_slug to "${slug}"`);
-    } catch (err) {
-      console.warn('[Availability] Failed to update tenant slug:', err.message);
-    }
   }
 
   // 2. Try to also save to Pod
@@ -396,18 +391,28 @@ router.post('/public', requireAuth(), async (req, res) => {
       });
     }
 
-    // Normalize slug to lowercase
-    publicInfo.bookingSlug = publicInfo.bookingSlug.toLowerCase();
+    // Normalize the slug, then move the account (and its bookings) to it
+    // before anything is written to the Pod.
+    publicInfo.bookingSlug = normalizeSlug(publicInfo.bookingSlug);
+    if (!publicInfo.bookingSlug) {
+      return res.status(400).json({ error: 'Invalid data', message: 'bookingSlug is not a valid booking URL' });
+    }
+    if (req.tenant) {
+      try {
+        changeBookingSlug(req.tenant.id, publicInfo.bookingSlug);
+        req.tenant.booking_slug = publicInfo.bookingSlug;
+      } catch (err) {
+        if (err instanceof SlugTakenError) {
+          return res.status(409).json({ error: 'This booking URL is already taken. Please choose a different one.' });
+        }
+        throw err;
+      }
+    }
 
     const profileUrl = await solidService.setupPublicBookingPage(podUrl, publicInfo, fetch);
     
     // Generate the public booking URL
     const bookingUrl = `${config.frontendUrl}/book/${publicInfo.bookingSlug}`;
-
-    // Phase 2 (Task 12): Link booking slug to tenant record for direct lookup
-    if (req.tenant) {
-      updateBookingSlug(req.tenant.id, publicInfo.bookingSlug);
-    }
 
     // Track usage: increment bookingPages counter for this tenant
     if (req.tenant) {
