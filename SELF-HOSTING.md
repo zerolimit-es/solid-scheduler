@@ -79,6 +79,18 @@ That's it. Caddy handles certificate issuance and renewal.
 
 If you already run a reverse proxy (Traefik, HAProxy, etc.), point it at the frontend container on port 80. The frontend container handles both static assets and API proxying to the backend.
 
+Two things make this work:
+
+1. Your proxy must send `X-Forwarded-Proto: https` and `X-Forwarded-For` (Traefik, Caddy and HAProxy's `option forwardfor` + `http-request set-header X-Forwarded-Proto https` do). The frontend container passes them on to the backend, which only sets its session cookie when it sees `https`. Without the header, signing in fails.
+2. Set `TRUST_PROXY=2` in `.env`. Requests now pass through two proxies (yours, then the frontend container) before reaching the backend. With the default of `1`, the backend takes your proxy's address for the visitor's, and all visitors share one rate limit.
+
+```env
+BASE_URL=https://scheduler.example.com
+FRONTEND_URL=https://scheduler.example.com
+FRONTEND_PORT=127.0.0.1:3000
+TRUST_PROXY=2
+```
+
 ## Solid Pod Setup
 
 SolidScheduler stores your scheduling data in a Solid Pod — a personal data store you control.
@@ -196,6 +208,7 @@ CALDAV_BOOKING_SLUG=your-booking-slug
 | `DOMAIN` | Caddy only | — | Your domain (used by Caddy for auto-HTTPS) |
 | `FRONTEND_PORT` | No | `0.0.0.0:80` | Frontend port binding; set to `127.0.0.1:3000` behind a reverse proxy |
 | `DB_PATH` | No | `/data/solid-scheduler.db` | SQLite database file; set by the Docker image, keep it on the `/data` volume |
+| `TRUST_PROXY` | No | `1` | Number of reverse proxies in front of the backend. Leave at `1` for the bundled Caddy/nginx setups; set `2` with your own proxy in front of the frontend container (Option C) |
 | `REDIS_URL` | No | `redis://redis:6379` | Redis connection string |
 | `DEFAULT_SOLID_IDP` | No | `https://login.inrupt.com` | Solid identity provider URL |
 | `SMTP_HOST` | No | `127.0.0.1` | SMTP server hostname |
@@ -258,6 +271,8 @@ Make sure `docker compose up -d` finished without errors. The frontend is built 
 ### Solid login fails
 
 Verify that `BASE_URL` matches the URL you are accessing the app from (including `https://`). Solid OIDC redirects will fail if there is a mismatch.
+
+If you run your own reverse proxy in front of the frontend container (Option C) and signing in returns you to the login screen, the session cookie is not being set: check that your proxy sends `X-Forwarded-Proto: https`.
 
 ### Emails not sending
 

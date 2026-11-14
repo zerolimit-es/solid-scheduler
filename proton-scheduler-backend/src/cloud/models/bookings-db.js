@@ -53,6 +53,13 @@ export function initBookingsTable() {
   } catch (e) {
     // Column already exists
   }
+  // A booking already in the Pod that was cancelled here while its owner was
+  // signed out: the Pod copy is cancelled at the next sync.
+  try {
+    db.exec(`ALTER TABLE bookings ADD COLUMN pod_cancel_pending INTEGER DEFAULT 0`);
+  } catch (e) {
+    // Column already exists
+  }
 }
 
 export function createBooking(booking) {
@@ -74,6 +81,70 @@ export function createBooking(booking) {
     booking.assignedMemberEmail || null,
   );
   return booking;
+}
+
+/**
+ * Record a booking that was written straight to the owner's Pod, so the
+ * public booking page and the calendar feed (which read this table, not the
+ * Pod) know the time is taken. Stored as already synced.
+ *
+ * @returns {boolean} false when a row with this ID already exists
+ */
+export function recordPodBooking(booking) {
+  const db = getDb();
+  const result = db.prepare(`
+    INSERT OR IGNORE INTO bookings (id, slug, title, start_time, end_time, organizer_name, organizer_email,
+      attendee_name, attendee_email, notes, location, status, ics_content, synced_to_pod, pod_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, 1, ?)
+  `).run(
+    booking.id, booking.slug, booking.title,
+    booking.start, booking.end,
+    booking.organizerName || '', booking.organizerEmail || '',
+    booking.attendeeName, booking.attendeeEmail,
+    booking.notes || '', booking.location || 'Video Call',
+    booking.icsContent || '', booking.podUrl || null,
+  );
+  return result.changes > 0;
+}
+
+/**
+ * Whether a confirmed booking on this page overlaps [start, end).
+ * Times are naive "YYYY-MM-DD HH:MM", which compare correctly as text.
+ */
+export function hasOverlappingBooking(slug, start, end) {
+  if (!slug) return false;
+  return !!getDb().prepare(
+    `SELECT 1 FROM bookings WHERE slug = ? AND status = 'confirmed' AND start_time < ? AND end_time > ? LIMIT 1`
+  ).get(slug, end, start);
+}
+
+/** Cancel a booking only if it belongs to this booking page. */
+export function cancelBookingForSlug(id, slug) {
+  if (!slug) return false;
+  return getDb().prepare(
+    `UPDATE bookings SET status = 'cancelled' WHERE id = ? AND slug = ?`
+  ).run(id, slug).changes > 0;
+}
+
+// ── Cancellations waiting to reach the Pod ──
+
+export function markPodCancelPending(id) {
+  getDb().prepare(`UPDATE bookings SET pod_cancel_pending = 1 WHERE id = ?`).run(id);
+}
+
+export function clearPodCancelPending(id) {
+  getDb().prepare(`UPDATE bookings SET pod_cancel_pending = 0 WHERE id = ?`).run(id);
+}
+
+/** Cancelled bookings of one page whose Pod copy is still confirmed. Slug required, as for syncing. */
+export function getPendingPodCancellations(slug) {
+  if (typeof slug !== 'string' || slug === '') {
+    throw new Error('getPendingPodCancellations requires a booking slug');
+  }
+  return getDb().prepare(
+    `SELECT id, title, pod_url FROM bookings
+     WHERE slug = ? AND status = 'cancelled' AND pod_cancel_pending = 1 AND pod_url IS NOT NULL AND pod_url != ''`
+  ).all(slug);
 }
 
 /**

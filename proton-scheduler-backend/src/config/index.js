@@ -15,6 +15,19 @@ if (nodeEnv === 'production') {
   }
 }
 
+// Number of reverse proxies between visitors and this server. Express uses
+// it to read the visitor's address and scheme from X-Forwarded-* headers:
+// too low and every visitor shares one rate-limit bucket (the proxy's
+// address); too high and visitors can spoof their address.
+function parseTrustProxy(value) {
+  if (value === undefined || value === '') return 1;
+  const hops = Number(value);
+  if (!Number.isInteger(hops) || hops < 0 || hops > 10) {
+    throw new Error('TRUST_PROXY must be a whole number of proxy hops (0-10)');
+  }
+  return hops;
+}
+
 export const config = {
   // Server
   port: parseInt(process.env.PORT || '3001', 10),
@@ -22,6 +35,7 @@ export const config = {
   baseUrl: process.env.BASE_URL || 'http://localhost:3001',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   domain: process.env.DOMAIN || null,
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
 
   // Session
   sessionSecret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',

@@ -8,7 +8,7 @@
 import { createAuthRouter } from '@zerolimit/packages/solid-auth/express';
 import { sessionManager, solidFetchMap } from '../middleware/auth.js';
 import { getUserPods } from '../services/solid.js';
-import { syncBookingsToPod, syncCalendarEventsToPod, importPodEventsToSQLite } from '../cloud/services/pod-sync.js';
+import { syncBookingsToPod, syncCancellationsToPod, syncCalendarEventsToPod, importPodEventsToSQLite } from '../cloud/services/pod-sync.js';
 import { getAvailability as getLocalAvailability } from '../cloud/models/bookings-db.js';
 import { getTenantByWebId, getTenantBySlug, updateBookingSlug } from '../cloud/models/database.js';
 import { extractSlug } from '../utils/webid.js';
@@ -184,6 +184,12 @@ const router = createAuthRouter({
         // Phase 2: Sync this account's unsynced bookings + calendar events to Pod
         const syncResult = await syncBookingsToPod(pods[0], authenticatedFetch, tenant?.booking_slug, timezone);
         console.log('[Auth] Post-login booking sync:', syncResult.synced, 'synced,', syncResult.failed, 'failed');
+
+        // Bookings a visitor cancelled after they had reached the Pod
+        const cancelResult = await syncCancellationsToPod(pods[0], authenticatedFetch, tenant?.booking_slug);
+        if (cancelResult.total > 0) {
+          console.log('[Auth] Post-login cancellation sync:', cancelResult.cancelled, 'cancelled,', cancelResult.failed, 'failed');
+        }
 
         if (tenant?.id) {
           const calResult = await syncCalendarEventsToPod(pods[0], authenticatedFetch, timezone, tenant.id);

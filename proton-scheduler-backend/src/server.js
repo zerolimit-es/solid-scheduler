@@ -60,7 +60,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-app.set("trust proxy", 1);
+app.set('trust proxy', config.trustProxy);
 
 // Session handling (for Solid OIDC state)
 const SESSION_COOKIE = 'solid-scheduler-session';

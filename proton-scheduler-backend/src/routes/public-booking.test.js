@@ -90,7 +90,9 @@ before(async () => {
   baseUrl = `http://127.0.0.1:${port}`;
   child = spawn(process.execPath, [SERVER], {
     env: { ...process.env, PORT: String(port), DB_PATH: DB_FILE, FRONTEND_URL: FRONTEND,
-      SESSION_SECRET: SECRET, NODE_ENV: 'test', REDIS_URL: '', DB_ENCRYPTION_KEY: '' },
+      SESSION_SECRET: SECRET, NODE_ENV: 'test', REDIS_URL: '', DB_ENCRYPTION_KEY: '',
+      // A server timezone far from the page's (Europe/Paris): times must not depend on it
+      TZ: 'Pacific/Auckland' },
     stdio: 'ignore',
   });
   for (let i = 0; i < 100; i++) {
@@ -201,5 +203,61 @@ describe('a page whose owner has not saved their hours', () => {
       body: JSON.stringify({ date: SATURDAY, time: '10:00', name: 'Vera Visitor', email: 'vera@example.com' }),
     });
     assert.equal(res.status, 409);
+  });
+});
+
+describe('dashboard bookings and the public page share one calendar', () => {
+  const NEXT_MONDAY = '2030-09-16';
+  const dashboardBook = (time) => nora('/api/bookings', {
+    method: 'POST',
+    body: JSON.stringify({ date: NEXT_MONDAY, time, name: 'Dana Client', email: 'dana@example.com' }),
+  });
+  const slotState = async () => Object.fromEntries(
+    (await slots(NEXT_MONDAY)).slots.map((s) => [s.time, s.isBooked]));
+
+  it("stores a dashboard booking at the chosen time in the page's timezone, and takes the slot", async () => {
+    const res = await dashboardBook('09:30');
+    const body = await res.json();
+    assert.equal(res.status, 201, JSON.stringify(body));
+    assert.equal(body.booking.startTime, '9:30 AM');
+    assert.equal(body.booking.endTime, '10:00 AM');
+    assert.equal(body.booking.date, 'Monday, September 16, 2030');
+    // 09:30 in Paris (UTC+2 in September), whatever the server's own timezone
+    assert.equal(body.booking.start, '2030-09-16T07:30:00.000Z');
+
+    const sqlite = new Database(DB_FILE);
+    const row = sqlite.prepare('SELECT start_time, end_time FROM bookings WHERE id = ?').get(body.booking.id);
+    sqlite.close();
+    assert.deepEqual({ ...row }, { start_time: `${NEXT_MONDAY} 09:30`, end_time: `${NEXT_MONDAY} 10:00` });
+
+    assert.deepEqual(await slotState(), { '09:00': false, '09:30': true, '10:00': false, '10:30': false });
+  });
+
+  it('refuses a dashboard booking over a time a visitor has booked', async () => {
+    const sqlite = new Database(DB_FILE);
+    sqlite.prepare(`INSERT INTO bookings (id, slug, title, start_time, end_time, attendee_name, attendee_email)
+      VALUES ('visitor-1', ?, 'Visitor meeting', ?, ?, 'Vera', 'vera@example.com')`)
+      .run(SLUG, `${NEXT_MONDAY} 10:00`, `${NEXT_MONDAY} 10:30`);
+    sqlite.close();
+
+    const res = await dashboardBook('10:00');
+    assert.equal(res.status, 409);
+    assert.equal((await dashboardBook('25:00')).status, 400);
+  });
+
+  it("queues the Pod cancellation when a visitor cancels a booking that is already in the owner's Pod", async () => {
+    const sqlite = new Database(DB_FILE);
+    sqlite.prepare(`UPDATE bookings SET synced_to_pod = 1, pod_url = 'https://pod.example/nora/solid-scheduler/bookings/visitor-1.ttl'
+      WHERE id = 'visitor-1'`).run();
+    sqlite.close();
+
+    const res = await fetch(`${baseUrl}/api/public/${SLUG}/bookings/visitor-1`, { method: 'DELETE' });
+    assert.equal(res.status, 200);
+
+    const after = new Database(DB_FILE);
+    const row = after.prepare("SELECT status, pod_cancel_pending FROM bookings WHERE id = 'visitor-1'").get();
+    after.close();
+    assert.deepEqual({ ...row }, { status: 'cancelled', pod_cancel_pending: 1 });
+    assert.equal((await slotState())['10:00'], false, 'slot is free again');
   });
 });

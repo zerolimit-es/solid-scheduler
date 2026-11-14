@@ -13,7 +13,10 @@ import {
   getBookedSlots,
   cancelBooking,
   getBookingById,
+  markPodCancelPending,
 } from '../cloud/models/bookings-db.js';
+import { syncCancellationsToPod } from '../cloud/services/pod-sync.js';
+import { solidFetchMap } from '../middleware/auth.js';
 import { getAvailability } from '../cloud/models/bookings-db.js';
 import { getBlockedIntervals, isBlocked } from '../cloud/models/calendar-events-db.js';
 import {
@@ -495,6 +498,18 @@ router.delete('/:slug/bookings/:id', bookingLimiter, (req, res) => {
     }
     cancelBooking(req.params.id);
     caldav().bookingCancelled(req.params.slug, req.params.id);
+
+    // The booking may already be in the owner's Pod, where it would stay
+    // confirmed. Cancel it there now if the owner is signed in; otherwise it
+    // stays pending and is cancelled at their next sign-in.
+    if (booking.synced_to_pod && booking.pod_url && booking.status !== 'cancelled') {
+      markPodCancelPending(booking.id);
+      const ownerFetch = tenant?.webid ? solidFetchMap.get(tenant.webid) : null;
+      if (ownerFetch && tenant.solid_pod_url) {
+        syncCancellationsToPod(tenant.solid_pod_url, ownerFetch, tenant.booking_slug)
+          .catch((err) => console.warn('[Bookings] Pod cancellation deferred to next login:', err.message));
+      }
+    }
     res.json({ success: true, message: 'Booking cancelled' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to cancel booking', message: safeMessage(error) });

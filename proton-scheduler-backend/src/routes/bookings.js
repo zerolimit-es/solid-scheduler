@@ -34,7 +34,11 @@ import {
   getBookingStats as getLocalBookingStats,
   getBookingById,
   getAvailability,
+  recordPodBooking,
+  hasOverlappingBooking,
+  cancelBookingForSlug,
 } from '../cloud/models/bookings-db.js';
+import { isValidTimeZone, instantToNaive, zonedToInstant, parseNaive } from '../utils/tz.js';
 import { sendVisitorConfirmation, sendOrganizerNotification } from '../cloud/services/email.js';
 
 const router = Router();
@@ -198,16 +202,23 @@ router.post('/', requireAuth(), async (req, res) => {
     }
 
     let { start, end, attendee, notes, location, recurrence } = req.body;
-    // Normalize frontend format: { date, time, name, email } -> { start, end, attendee }
+
+    // The account's timezone and meeting length, same as its public booking page
+    const slugForTimes = req.tenant?.booking_slug;
+    const pageAvail = getAvailability(slugForTimes);
+    const tz = isValidTimeZone(pageAvail?.timezone) ? pageAvail.timezone : 'Europe/Paris';
+
+    // Normalize frontend format: { date, time, name, email } -> { start, end, attendee }.
+    // The date and time are wall-clock time in the account's timezone, not the server's.
     if (!start && req.body.date && req.body.time) {
-      // The account's own meeting length, same as its public booking page
-      const configured = Number(getAvailability(req.tenant?.booking_slug)?.eventDuration);
+      const configured = Number(pageAvail?.eventDuration);
       const duration = Number.isInteger(configured) && configured >= 5 && configured <= 480 ? configured : 30;
-      const [h, m] = req.body.time.split(':').map(Number);
-      start = `${req.body.date}T${req.body.time}:00`;
-      const endH = h + Math.floor((m + duration) / 60);
-      const endM = (m + duration) % 60;
-      end = `${req.body.date}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`;
+      const wall = parseNaive(`${req.body.date} ${req.body.time}`);
+      if (!wall) {
+        return res.status(400).json({ error: 'Invalid date or time', message: 'date must be YYYY-MM-DD and time HH:MM' });
+      }
+      start = zonedToInstant(wall.year, wall.month, wall.day, wall.hour, wall.minute, tz);
+      end = new Date(start.getTime() + duration * 60000);
     }
     if (!attendee && req.body.name && req.body.email) {
       attendee = { name: req.body.name, email: req.body.email };
@@ -234,19 +245,36 @@ router.post('/', requireAuth(), async (req, res) => {
       }
     }
 
-    // Build display strings the frontend ConfirmationView expects
     const startDt = new Date(start);
     const endDt = new Date(end);
+    if (Number.isNaN(startDt.getTime()) || Number.isNaN(endDt.getTime()) || endDt <= startDt) {
+      return res.status(400).json({ error: 'Invalid times', message: 'start and end must be valid, with end after start' });
+    }
+
+    // Naive local times ("YYYY-MM-DD HH:MM" in the account's timezone): the
+    // form bookings are stored in locally, and what the display strings use.
+    const startNaive = instantToNaive(startDt, tz);
+    const endNaive = instantToNaive(endDt, tz);
+
+    // The Pod doesn't hold bookings made on the public page since the last
+    // sync, so check those here.
+    if (hasOverlappingBooking(slugForTimes, startNaive, endNaive)) {
+      return res.status(409).json({ error: 'Slot unavailable', message: 'This time slot is no longer available' });
+    }
+
+    // Build display strings the frontend ConfirmationView expects
     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const dateDisplay = `${days[startDt.getDay()]}, ${months[startDt.getMonth()]} ${startDt.getDate()}, ${startDt.getFullYear()}`;
-    const fmt12 = (d) => {
-      const h = d.getHours(), m = d.getMinutes();
+    const wallStart = parseNaive(startNaive);
+    const weekday = new Date(Date.UTC(wallStart.year, wallStart.month - 1, wallStart.day)).getUTCDay();
+    const dateDisplay = `${days[weekday]}, ${months[wallStart.month - 1]} ${wallStart.day}, ${wallStart.year}`;
+    const fmt12 = (naive) => {
+      const { hour: h, minute: m } = parseNaive(naive);
       const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
       return `${h12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
     };
-    const startTimeDisplay = fmt12(startDt);
-    const endTimeDisplay = fmt12(endDt);
+    const startTimeDisplay = fmt12(startNaive);
+    const endTimeDisplay = fmt12(endNaive);
 
     // -----------------------------------------------------------------------
     // Try Pod-first, fall back to SQLite when Solid session is unavailable.
@@ -272,8 +300,8 @@ router.post('/', requireAuth(), async (req, res) => {
         {
           podUrl,
           fetch,
-          start: new Date(start),
-          end: new Date(end),
+          start: startDt,
+          end: endDt,
           attendee,
           notes,
           recurrence,
@@ -283,6 +311,31 @@ router.post('/', requireAuth(), async (req, res) => {
 
       if (req.tenant) {
         incrementUsage(req.tenant.id, 'bookingsPerMonth');
+      }
+
+      // Keep a local record: the public booking page and the calendar feed
+      // read SQLite, not the Pod, and must see this time as taken. (For a
+      // recurring booking this covers the first occurrence only.)
+      if (slugForTimes) {
+        try {
+          recordPodBooking({
+            id: booking.id,
+            slug: slugForTimes,
+            title: booking.title,
+            start: startNaive,
+            end: endNaive,
+            organizerName: booking.organizer?.name,
+            organizerEmail: booking.organizer?.email,
+            attendeeName: attendee.name,
+            attendeeEmail: attendee.email,
+            notes,
+            location: booking.location || location,
+            icsContent: booking.icsContent,
+            podUrl: booking.url,
+          });
+        } catch (dbErr) {
+          console.warn('[Bookings] Could not record Pod booking locally:', dbErr.message);
+        }
       }
 
       // Copy to the operator's CalDAV calendar (background; only for CALDAV_BOOKING_SLUG)
@@ -328,22 +381,12 @@ router.post('/', requireAuth(), async (req, res) => {
     const slug = req.tenant?.booking_slug || 'my-booking';
     const title = `Meeting with ${attendee.name}`;
 
-    // Format times as "YYYY-MM-DD HH:MM" to match SQLite schema
-    const fmt = (d) => {
-      const yy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mi = String(d.getMinutes()).padStart(2, '0');
-      return `${yy}-${mm}-${dd} ${hh}:${mi}`;
-    };
-
     const bookingPayload = {
       id: bookingId,
       slug,
       title,
-      start: fmt(startDt),
-      end: fmt(endDt),
+      start: startNaive,
+      end: endNaive,
       organizerName: process.env.ORGANIZER_NAME || '',
       organizerEmail: process.env.ORGANIZER_EMAIL || '',
       attendeeName: attendee.name,
@@ -692,10 +735,16 @@ router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req
       occurrenceDate: occurrenceDate ? new Date(occurrenceDate) : null,
     });
 
-    // Remove it from the operator's CalDAV calendar. Cancelling one occurrence
-    // of a series leaves the series event in place.
+    // Remove it from the operator's CalDAV calendar, and cancel the local
+    // copy so the public page frees the slot and the feed drops it.
+    // Cancelling one occurrence of a series leaves the series in place.
     if (!(scope === 'single' && occurrenceDate)) {
       caldav().bookingCancelled(req.tenant?.booking_slug, id);
+      try {
+        cancelBookingForSlug(booking.id, req.tenant?.booking_slug);
+      } catch (dbErr) {
+        console.warn('[Bookings] Could not cancel local copy:', dbErr.message);
+      }
     }
 
     const message = scope === 'single' && occurrenceDate
