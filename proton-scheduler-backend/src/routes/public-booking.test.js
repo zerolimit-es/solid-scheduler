@@ -167,3 +167,39 @@ describe('public bookings are accepted only for offered times', () => {
     assert.equal(free.body.booking.duration, 30);
   });
 });
+
+describe('a page whose owner has not saved their hours', () => {
+  const OTTO = 'https://otto.solidcommunity.net/profile/card#me';
+  const SATURDAY = '2030-09-07';
+
+  before(async () => {
+    // Signing in creates the account (slug "otto"); no availability is saved
+    const res = await fetch(`${baseUrl}/api/auth/status`, { headers: { Cookie: sessionCookie({ webId: OTTO }) } });
+    assert.equal(res.status, 200);
+  });
+
+  it('offers weekdays 09:00–17:00 and no weekends, as its availability says', async () => {
+    const avail = await (await fetch(`${baseUrl}/api/public/otto/availability`)).json();
+    assert.equal(avail.monday.enabled, true);
+    assert.equal(avail.saturday.enabled, false);
+    assert.equal(avail.sunday.enabled, false);
+
+    const weekday = await (await fetch(`${baseUrl}/api/public/otto/slots?date=${MONDAY}`)).json();
+    assert.equal(weekday.slots.length, 16);
+    assert.equal(weekday.slots[0].time, '09:00');
+    assert.equal(weekday.slots.at(-1).time, '16:30');
+
+    for (const date of [SATURDAY, SUNDAY]) {
+      assert.deepEqual((await (await fetch(`${baseUrl}/api/public/otto/slots?date=${date}`)).json()).slots, []);
+    }
+  });
+
+  it('refuses a weekend booking', async () => {
+    const res = await fetch(`${baseUrl}/api/public/otto/book`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: SATURDAY, time: '10:00', name: 'Vera Visitor', email: 'vera@example.com' }),
+    });
+    assert.equal(res.status, 409);
+  });
+});

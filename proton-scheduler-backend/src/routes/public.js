@@ -83,15 +83,35 @@ function pageSettings(slug) {
   };
 }
 
+/** What a page offers until its owner saves their hours: weekdays, 09:00–17:00. */
+const DEFAULT_DAY = { start: '09:00', end: '17:00' };
+const DEFAULT_WEEK = Object.fromEntries(DAY_NAMES.map((name) => [
+  name, { enabled: name !== 'saturday' && name !== 'sunday', ...DEFAULT_DAY },
+]));
+
+/**
+ * The page's settings for one weekday, as the public availability endpoint
+ * reports them: the saved day, switched off if saved hours leave it out, or
+ * the default week when nothing has been saved.
+ */
+function daySettings(avail, dayName) {
+  if (!avail) return DEFAULT_WEEK[dayName];
+  const saved = avail.days?.[dayName] || avail[dayName];
+  return {
+    enabled: !!saved?.enabled,
+    start: saved?.start || DEFAULT_DAY.start,
+    end: saved?.end || DEFAULT_DAY.end,
+  };
+}
+
 /** Working hours for `date` in minutes, or null when the day is switched off. */
 function dayWindow(avail, date) {
   const [y, m, d] = date.split('-').map(Number);
-  const dayName = DAY_NAMES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
-  const settings = avail?.days?.[dayName] || avail?.[dayName] || null;
-  if (settings && !settings.enabled) return null;
-  const start = toMinutes(settings?.start) ?? 9 * 60;
+  const settings = daySettings(avail, DAY_NAMES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]);
+  if (!settings.enabled) return null;
+  const start = toMinutes(settings.start) ?? 9 * 60;
   // A booking must end the same day (bookings are stored per day)
-  const end = Math.min(toMinutes(settings?.end) ?? 17 * 60, 24 * 60 - 1);
+  const end = Math.min(toMinutes(settings.end) ?? 17 * 60, 24 * 60 - 1);
   return end > start ? { start, end } : null;
 }
 
@@ -159,43 +179,14 @@ router.get('/:slug/team', publicReadLimiter, (req, res) => {
 // GET /api/public/:slug/availability - public availability for calendar
 router.get('/:slug/availability', publicReadLimiter, (req, res) => {
   try {
-    const avail = getAvailability(req.params.slug);
-    if (!avail) {
-      return res.json({
-        eventDuration: 30,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        monday: { enabled: true, start: '09:00', end: '17:00' },
-        tuesday: { enabled: true, start: '09:00', end: '17:00' },
-        wednesday: { enabled: true, start: '09:00', end: '17:00' },
-        thursday: { enabled: true, start: '09:00', end: '17:00' },
-        friday: { enabled: true, start: '09:00', end: '17:00' },
-        saturday: { enabled: false, start: '09:00', end: '17:00' },
-        sunday: { enabled: false, start: '09:00', end: '17:00' },
-      });
-    }
-    const result = { ...avail };
-    if (result.days) {
-      for (const [day, settings] of Object.entries(result.days)) {
-        result[day] = {
-          enabled: settings.enabled || false,
-          start: settings.start || '09:00',
-          end: settings.end || '17:00',
-        };
-      }
-    }
-    for (const d of ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']) {
-      if (!result[d]) result[d] = { enabled: false, start: '09:00', end: '17:00' };
-    }
+    const { avail, duration } = pageSettings(req.params.slug);
     res.json({
-      eventDuration: result.eventDuration || 30,
-      timezone: result.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-      monday: result.monday,
-      tuesday: result.tuesday,
-      wednesday: result.wednesday,
-      thursday: result.thursday,
-      friday: result.friday,
-      saturday: result.saturday,
-      sunday: result.sunday,
+      eventDuration: duration,
+      timezone: avail?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ...Object.fromEntries(
+        ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+          .map((name) => [name, daySettings(avail, name)])
+      ),
     });
   } catch (err) {
     console.error('Public availability error:', err);
