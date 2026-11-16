@@ -69,6 +69,7 @@ export function generateAvailableSlots(availability, existingBookings = [], opti
         rangeStart: startDate,
         rangeEnd: endDate,
         maxOccurrences: 100,
+        timezone: availability.timezone,
       });
       expandedBookings.push(...occurrences);
     } else {
@@ -234,7 +235,8 @@ export async function createBooking(params, options = {}) {
   }
   
   // Check for conflicts (for the first occurrence)
-  const hasConflict = await solidService.checkSlotConflict(podUrl, start, end, fetch);
+  // Recurring bookings repeat at the same local time in the account's timezone
+  const hasConflict = await solidService.checkSlotConflict(podUrl, start, end, fetch, { timezone: availability.timezone });
   if (hasConflict) {
     throw new Error('This time slot is no longer available');
   }
@@ -382,7 +384,7 @@ export async function cancelBookingById(podUrl, bookingId, fetch, options = {}) 
  * @param {Date} rangeEnd - End of range
  * @returns {Array} Expanded occurrences
  */
-export async function getExpandedBookings(podUrl, fetch, rangeStart, rangeEnd) {
+export async function getExpandedBookings(podUrl, fetch, rangeStart, rangeEnd, { timezone } = {}) {
   const bookings = await solidService.loadBookings(podUrl, fetch);
   const expanded = [];
   
@@ -395,6 +397,7 @@ export async function getExpandedBookings(podUrl, fetch, rangeStart, rangeEnd) {
         rangeStart,
         rangeEnd,
         maxOccurrences: 100,
+        timezone,
       });
       expanded.push(...occurrences);
     } else {
@@ -452,19 +455,45 @@ export async function updateRecurringBooking(podUrl, bookingId, updates, fetch, 
 }
 
 /**
- * Get upcoming bookings for a user
+ * Get upcoming bookings for a user, soonest first.
+ *
+ * A recurring booking is listed once, at its next occurrence: `start` and
+ * `end` are that occurrence, `seriesStart` is when the series began. A
+ * series with no occurrence left is not upcoming.
+ *
  * @param {string} podUrl - User's Pod URL
  * @param {Function} fetch - Authenticated fetch
  * @param {number} limit - Maximum number of bookings to return
+ * @param {{ timezone?: string }} [options] - Timezone recurring bookings repeat in
  */
-export async function getUpcomingBookings(podUrl, fetch, limit = 10) {
+export async function getUpcomingBookings(podUrl, fetch, limit = 10, { timezone } = {}) {
   const now = new Date();
   const bookings = await solidService.loadBookings(podUrl, fetch, {
     from: now,
   });
-  
-  return bookings
-    .filter(b => b.status !== SCHEMA.EventCancelled)
+
+  const upcoming = [];
+  for (const booking of bookings) {
+    if (booking.status === SCHEMA.EventCancelled) continue;
+
+    if (!(booking.isRecurring && booking.recurrence)) {
+      upcoming.push(booking);
+      continue;
+    }
+
+    const [next] = expandRecurringEvent(booking, {
+      rangeStart: now,
+      rangeEnd: new Date(now.getTime() + 10 * 366 * 24 * 60 * 60 * 1000),
+      maxOccurrences: 1,
+      timezone,
+    });
+    if (!next) continue;
+    // Keep the series' own ID: cancelling from the list acts on the series
+    upcoming.push({ ...booking, start: next.start, end: next.end, seriesStart: booking.start });
+  }
+
+  return upcoming
+    .sort((a, b) => new Date(a.start) - new Date(b.start))
     .slice(0, limit);
 }
 

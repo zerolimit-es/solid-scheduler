@@ -1,4 +1,6 @@
 import { getDb } from './database.js';
+import { expandRRule } from '../../utils/rrule.js';
+import { addDays, naiveDiffMinutes, parseNaive } from '../../utils/tz.js';
 
 export function initBookingsTable() {
   const db = getDb();
@@ -53,6 +55,19 @@ export function initBookingsTable() {
   } catch (e) {
     // Column already exists
   }
+  // Recurring bookings: the RRULE the booking repeats by, and the local dates
+  // ("YYYY-MM-DD", comma-separated) of occurrences cancelled on their own.
+  // Every occurrence takes its slot on the public booking page.
+  try {
+    db.exec(`ALTER TABLE bookings ADD COLUMN recurrence TEXT`);
+  } catch (e) {
+    // Column already exists
+  }
+  try {
+    db.exec(`ALTER TABLE bookings ADD COLUMN excluded_dates TEXT`);
+  } catch (e) {
+    // Column already exists
+  }
   // A booking already in the Pod that was cancelled here while its owner was
   // signed out: the Pod copy is cancelled at the next sync.
   try {
@@ -67,8 +82,8 @@ export function createBooking(booking) {
   db.prepare(`
     INSERT INTO bookings (id, slug, title, start_time, end_time, organizer_name, organizer_email,
       attendee_name, attendee_email, notes, location, status, ics_content, synced_to_pod,
-      assigned_member_id, assigned_member_name, assigned_member_email)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      assigned_member_id, assigned_member_name, assigned_member_email, recurrence)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
   `).run(
     booking.id, booking.slug, booking.title,
     booking.start, booking.end,
@@ -79,6 +94,7 @@ export function createBooking(booking) {
     booking.assignedMemberId || null,
     booking.assignedMemberName || null,
     booking.assignedMemberEmail || null,
+    booking.recurrence || null,
   );
   return booking;
 }
@@ -94,8 +110,8 @@ export function recordPodBooking(booking) {
   const db = getDb();
   const result = db.prepare(`
     INSERT OR IGNORE INTO bookings (id, slug, title, start_time, end_time, organizer_name, organizer_email,
-      attendee_name, attendee_email, notes, location, status, ics_content, synced_to_pod, pod_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, 1, ?)
+      attendee_name, attendee_email, notes, location, status, ics_content, synced_to_pod, pod_url, recurrence)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, 1, ?, ?)
   `).run(
     booking.id, booking.slug, booking.title,
     booking.start, booking.end,
@@ -103,19 +119,69 @@ export function recordPodBooking(booking) {
     booking.attendeeName, booking.attendeeEmail,
     booking.notes || '', booking.location || 'Video Call',
     booking.icsContent || '', booking.podUrl || null,
+    booking.recurrence || null,
   );
   return result.changes > 0;
 }
 
+// ── Recurring bookings ──
+
+const toNaive = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} `
+  + `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+const excludedDatesOf = (row) => String(row.excluded_dates || '').split(',').map((d) => d.trim()).filter(Boolean);
+
 /**
- * Whether a confirmed booking on this page overlaps [start, end).
+ * The occurrences of a recurring booking row that start within
+ * [from, to], as naive { start_time, end_time }. Occurrences cancelled on
+ * their own are left out.
+ */
+function occurrencesOf(row, from, to) {
+  const minutes = naiveDiffMinutes(row.start_time, row.end_time);
+  if (!(minutes > 0)) return [];
+  const timeOfDay = row.start_time.slice(11);
+  const excluded = excludedDatesOf(row).map((date) => `${date} ${timeOfDay}`);
+  return expandRRule(row.recurrence, row.start_time, from, to, excluded).map((occ) => ({
+    start_time: toNaive(occ),
+    end_time: toNaive(new Date(occ.getTime() + minutes * 60000)),
+  }));
+}
+
+function recurringRows(slug) {
+  return getDb().prepare(
+    `SELECT start_time, end_time, recurrence, excluded_dates FROM bookings
+     WHERE slug = ? AND status = 'confirmed' AND recurrence IS NOT NULL AND recurrence != ''`
+  ).all(slug);
+}
+
+/**
+ * Whether a confirmed booking on this page overlaps [start, end), counting
+ * every occurrence of a recurring booking.
  * Times are naive "YYYY-MM-DD HH:MM", which compare correctly as text.
  */
 export function hasOverlappingBooking(slug, start, end) {
   if (!slug) return false;
-  return !!getDb().prepare(
-    `SELECT 1 FROM bookings WHERE slug = ? AND status = 'confirmed' AND start_time < ? AND end_time > ? LIMIT 1`
+  const single = getDb().prepare(
+    `SELECT 1 FROM bookings WHERE slug = ? AND status = 'confirmed' AND (recurrence IS NULL OR recurrence = '')
+       AND start_time < ? AND end_time > ? LIMIT 1`
   ).get(slug, end, start);
+  if (single) return true;
+
+  // Occurrences that could reach into the range start at most a day before it
+  const from = `${addDays(start.slice(0, 10), -1)} 00:00`;
+  return recurringRows(slug).some((row) =>
+    occurrencesOf(row, from, end).some((occ) => occ.start_time < end && occ.end_time > start));
+}
+
+/** Leave one occurrence (by its local date) out of a recurring booking. */
+export function addBookingExcludedDate(id, slug, date) {
+  if (!slug || !parseNaive(`${date} 00:00`)) return false;
+  const row = getDb().prepare('SELECT excluded_dates FROM bookings WHERE id = ? AND slug = ?').get(id, slug);
+  if (!row) return false;
+  const dates = new Set(excludedDatesOf(row));
+  dates.add(date);
+  getDb().prepare('UPDATE bookings SET excluded_dates = ? WHERE id = ? AND slug = ?').run([...dates].join(','), id, slug);
+  return true;
 }
 
 /** Cancel a booking only if it belongs to this booking page. */
@@ -341,11 +407,21 @@ export function getRecentBookings(slug, limit = 10) {
   `).all(slug, limit);
 }
 
+/**
+ * Times taken on one day of a booking page: its bookings that day, plus the
+ * occurrences of its recurring bookings that fall on it.
+ * @returns {Array<{ start_time: string, end_time: string }>} naive times
+ */
 export function getBookedSlots(slug, date) {
   const db = getDb();
-  return db.prepare(
-    `SELECT start_time, end_time FROM bookings WHERE slug = ? AND start_time LIKE ? AND status = 'confirmed'`
+  const single = db.prepare(
+    `SELECT start_time, end_time FROM bookings
+     WHERE slug = ? AND start_time LIKE ? AND status = 'confirmed' AND (recurrence IS NULL OR recurrence = '')`
   ).all(slug, `${date}%`);
+  if (!parseNaive(`${date} 00:00`)) return single;
+
+  const recurring = recurringRows(slug).flatMap((row) => occurrencesOf(row, `${date} 00:00`, `${date} 23:59`));
+  return [...single, ...recurring];
 }
 
 export function cancelBooking(id) {

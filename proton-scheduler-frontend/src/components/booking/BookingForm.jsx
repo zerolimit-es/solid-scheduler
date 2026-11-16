@@ -1,10 +1,30 @@
 import React from 'react';
 import { CalendarIcon, LoaderIcon, RepeatIcon } from '../common/Icons';
 
+// What each "Repeat" choice means as a recurrence rule
+const REPEAT_OPTIONS = [
+  { id: 'daily', label: 'Daily', rule: { frequency: 'DAILY' } },
+  { id: 'weekly', label: 'Weekly', rule: { frequency: 'WEEKLY' } },
+  { id: 'biweekly', label: 'Every 2 weeks', rule: { frequency: 'WEEKLY', interval: 2 } },
+  { id: 'monthly', label: 'Monthly', rule: { frequency: 'MONTHLY' } },
+];
+
+/** The option a recurrence rule corresponds to, if any. */
+function repeatOptionFor(recurrence) {
+  if (!recurrence) return null;
+  return REPEAT_OPTIONS.find((o) =>
+    o.rule.frequency === recurrence.frequency && (o.rule.interval || 1) === (recurrence.interval || 1)) || null;
+}
+
+/**
+ * @param {boolean} [allowRepeat] Offer repeating meetings. Only the organizer
+ *   can book a series, from the dashboard; a visitor books one meeting.
+ */
 export default function BookingForm({
   selectedDate, selectedSlot, availability, bookingForm, setBookingForm,
-  handleBooking, saving, setView,
+  handleBooking, saving, setView, allowRepeat = false,
 }) {
+  const repeat = repeatOptionFor(bookingForm.recurrence);
   const inputCls = 'w-full py-3 px-3.5 rounded-lg text-sm leading-relaxed transition-all duration-150 bg-[var(--user-input-bg)] border-[1.5px] border-[var(--user-input-border)] text-[var(--user-text)] outline-none focus:border-[rgba(var(--user-primary-rgb),0.5)] focus:shadow-[0_0_0_3px_rgba(var(--user-primary-rgb),0.1)] placeholder:text-[var(--user-text-disabled)]';
   const labelCls = 'block text-xs font-medium mb-1.5 text-[var(--user-text-disabled)]';
 
@@ -48,31 +68,26 @@ export default function BookingForm({
           onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
         />
       </div>
-      <div className="mb-4">
-        <label className={labelCls}>Repeat</label>
-        <select
-          className={inputCls}
-          value={bookingForm.recurrence?.frequency || 'none'}
-          onChange={(e) => {
-            const val = e.target.value;
-            if (val === 'none') {
-              setBookingForm({ ...bookingForm, recurrence: null });
-            } else {
+      {allowRepeat && (
+        <div className="mb-4">
+          <label className={labelCls}>Repeat</label>
+          <select
+            className={inputCls}
+            value={repeat?.id || 'none'}
+            onChange={(e) => {
+              const option = REPEAT_OPTIONS.find((o) => o.id === e.target.value);
               setBookingForm({
                 ...bookingForm,
-                recurrence: { frequency: val, count: bookingForm.recurrence?.count || 4 }
+                recurrence: option ? { ...option.rule, count: bookingForm.recurrence?.count || 4 } : null,
               });
-            }
-          }}
-        >
-          <option value="none">Does not repeat</option>
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
-          <option value="biweekly">Every 2 weeks</option>
-          <option value="monthly">Monthly</option>
-        </select>
-      </div>
-      {bookingForm.recurrence && (
+            }}
+          >
+            <option value="none">Does not repeat</option>
+            {REPEAT_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        </div>
+      )}
+      {allowRepeat && bookingForm.recurrence && (
         <div className="mb-4">
           <label className={labelCls}>Number of occurrences</label>
           <input
@@ -83,12 +98,12 @@ export default function BookingForm({
             value={bookingForm.recurrence.count || 4}
             onChange={(e) => setBookingForm({
               ...bookingForm,
-              recurrence: { ...bookingForm.recurrence, count: parseInt(e.target.value) || 4 }
+              recurrence: { ...bookingForm.recurrence, count: Math.min(Math.max(parseInt(e.target.value, 10) || 4, 2), 52) }
             })}
           />
           <small className="flex items-center gap-1.5 text-[var(--user-primary)] text-xs mt-2">
             <RepeatIcon style={{ width: 14, height: 14 }} />
-            {bookingForm.recurrence.count || 4} meetings, {bookingForm.recurrence.frequency}
+            {bookingForm.recurrence.count || 4} meetings, {(repeat?.label || '').toLowerCase()}
           </small>
         </div>
       )}

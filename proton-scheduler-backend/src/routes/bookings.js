@@ -23,7 +23,7 @@ import solidService from '../services/solid.js';
 import calendarService from '../services/calendar.js';
 import { generateICS } from '../utils/ics.js';
 import { SCHEMA } from '../utils/rdf.js';
-import { describeRecurrence } from '../utils/recurrence.js';
+import { describeRecurrence, buildRRule, parseRRule } from '../utils/recurrence.js';
 import { checkLimit } from '../cloud/config/tiers.js';
 import { requireFeature } from '../cloud/middleware/tierEnforcement.js';
 import { getUsage, incrementUsage, getDb } from '../cloud/models/database.js';
@@ -38,6 +38,7 @@ import {
   cancelBookingForSlug,
   getUnsyncedBookings,
   markPodCancelPending,
+  addBookingExcludedDate,
 } from '../cloud/models/bookings-db.js';
 import { organizerIdentity } from '../utils/organizer.js';
 import { isValidTimeZone, instantToNaive, zonedToInstant, parseNaive } from '../utils/tz.js';
@@ -107,8 +108,8 @@ function localRowToBooking(row, tz) {
     organizer: { name: row.organizer_name, email: row.organizer_email },
     attendee: { name: row.attendee_name, email: row.attendee_email },
     notes: row.notes || '',
-    isRecurring: false,
-    recurrence: null,
+    isRecurring: !!row.recurrence,
+    recurrence: row.recurrence ? parseRRule(row.recurrence) : null,
     excludedDates: [],
     syncedToPod: !!row.synced_to_pod,
   };
@@ -245,7 +246,8 @@ router.get('/expanded', requireAuth(), async (req, res) => {
       podUrl,
       fetch,
       new Date(from),
-      new Date(to)
+      new Date(to),
+      { timezone: accountTimezone(req.tenant?.booking_slug) },
     );
 
     res.json({
@@ -400,8 +402,8 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
       }
 
       // Keep a local record: the public booking page and the calendar feed
-      // read SQLite, not the Pod, and must see this time as taken. (For a
-      // recurring booking this covers the first occurrence only.)
+      // read SQLite, not the Pod, and must see this time as taken, on every
+      // occurrence if the booking repeats.
       if (slugForTimes) {
         try {
           recordPodBooking({
@@ -418,6 +420,7 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
             location: booking.location || location,
             icsContent: booking.icsContent,
             podUrl: booking.url,
+            recurrence: recurrence ? buildRRule(recurrence) : null,
           });
         } catch (dbErr) {
           console.warn('[Bookings] Could not record Pod booking locally:', dbErr.message);
@@ -487,6 +490,7 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
       attendeeEmail: attendee.email,
       notes: notes || '',
       location: location || 'Video Call',
+      recurrence: recurrence ? buildRRule(recurrence) : null,
     };
 
     const bookAndCount = getDb().transaction((payload, tenantId) => {
@@ -522,6 +526,7 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
       organizer: host,
       attendee,
       uid: bookingId,
+      recurrence,
       timezone: bookingAvail?.timezone,
     });
 
@@ -600,7 +605,8 @@ router.get('/upcoming', requireAuth(), async (req, res) => {
       const max = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 200);
       const now = new Date();
       const pending = await pushPendingToPod(req, podUrl, fetch);
-      const podBookings = await calendarService.getUpcomingBookings(podUrl, fetch, max);
+      const podBookings = await calendarService.getUpcomingBookings(podUrl, fetch, max,
+        { timezone: accountTimezone(req.tenant?.booking_slug) });
       const bookings = mergeBookings(podBookings, pending.filter((b) => b.start >= now)).slice(0, max);
 
       const enrichedBookings = bookings.map(b => ({
@@ -864,7 +870,15 @@ router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req
     // Remove it from the operator's CalDAV calendar, and cancel the local
     // copy so the public page frees the slot and the feed drops it.
     // Cancelling one occurrence of a series leaves the series in place.
-    if (!(scope === 'single' && occurrenceDate)) {
+    if (scope === 'single' && occurrenceDate) {
+      // Free that one occurrence's slot; the rest of the series stays
+      try {
+        const localDate = instantToNaive(new Date(occurrenceDate), accountTimezone(slug))?.slice(0, 10);
+        if (localDate) addBookingExcludedDate(booking.id, slug, localDate);
+      } catch (dbErr) {
+        console.warn('[Bookings] Could not record cancelled occurrence locally:', dbErr.message);
+      }
+    } else {
       caldav().bookingCancelled(slug, id);
       try {
         cancelBookingForSlug(booking.id, slug);

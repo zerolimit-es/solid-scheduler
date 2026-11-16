@@ -236,3 +236,83 @@ describe('when the WebID profile lists no Pod', () => {
     assert.equal(pod.writes.length, 0);
   });
 });
+
+describe('recurring bookings', () => {
+  const book = (body) => fetch(`${baseUrl}/api/bookings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Wes Client', email: 'wes@example.com', ...body }),
+  });
+  const MONDAY = '2030-09-16';
+
+  // Dashboard bookings need saved availability (the Pod copy is read for the organizer's details)
+  beforeEach(async () => {
+    const { saveAvailability } = await import('../cloud/models/bookings-db.js');
+    saveAvailability({ eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma' }, 'uma');
+    const solid = (await import('../services/solid.js')).default;
+    await solid.saveAvailability(POD, { eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma', email: 'uma@example.com', days: {} }, pod.fetch);
+  });
+
+  it('takes the slot on every occurrence, on the public page and for the organizer', async () => {
+    const { getBookedSlots, hasOverlappingBooking } = await import('../cloud/models/bookings-db.js');
+    const res = await book({ date: MONDAY, time: '10:00', recurrence: { frequency: 'WEEKLY', count: 3 } });
+    const body = await res.json();
+    assert.equal(res.status, 201, JSON.stringify(body));
+    assert.equal(body.booking.isRecurring, true);
+
+    const taken = (date) => getBookedSlots('uma', date).map((b) => `${b.start_time}-${b.end_time.slice(11)}`);
+    assert.deepEqual(taken('2030-09-16'), ['2030-09-16 10:00-10:30']);
+    assert.deepEqual(taken('2030-09-23'), ['2030-09-23 10:00-10:30'], 'second occurrence');
+    assert.deepEqual(taken('2030-09-30'), ['2030-09-30 10:00-10:30'], 'third occurrence');
+    assert.deepEqual(taken('2030-10-07'), [], 'the series has ended (COUNT=3)');
+    assert.deepEqual(taken('2030-09-24'), [], 'other days are free');
+
+    assert.equal(hasOverlappingBooking('uma', '2030-09-23 10:15', '2030-09-23 10:45'), true);
+    assert.equal(hasOverlappingBooking('uma', '2030-09-23 10:30', '2030-09-23 11:00'), false);
+
+    // The organizer cannot book over a later occurrence either (checked in the Pod)
+    assert.equal((await book({ date: '2030-09-23', time: '10:00' })).status, 409);
+    assert.equal((await book({ date: '2030-09-23', time: '11:00' })).status, 201);
+  });
+
+  it('lists a series once in upcoming, at its next occurrence', async () => {
+    // Began in 2020 and repeats weekly with no end: its next occurrence is within a week
+    const start = new Date('2020-01-06T09:00:00Z');
+    const solid = (await import('../services/solid.js')).default;
+    await solid.saveBooking(POD, {
+      id: 'series-old', title: 'Weekly sync', start, end: new Date(start.getTime() + 30 * 60000),
+      organizer: { name: 'Uma', email: 'uma@example.com' }, attendee: { name: 'Wes', email: 'wes@example.com' },
+      recurrence: { frequency: 'WEEKLY' },
+    }, pod.fetch);
+
+    const { bookings } = await get('/api/bookings/upcoming');
+    assert.deepEqual(bookings.map((b) => b.id), ['series-old']);
+    const next = new Date(bookings[0].start);
+    assert.ok(next > new Date() && next - new Date() <= 7 * 24 * 60 * 60 * 1000, bookings[0].start);
+    assert.equal(bookings[0].seriesStart, '2020-01-06T09:00:00.000Z');
+  });
+
+  it('frees one slot when a single occurrence is cancelled, and keeps the rest', async () => {
+    const { getBookedSlots } = await import('../cloud/models/bookings-db.js');
+    const created = await (await book({ date: MONDAY, time: '14:00', recurrence: { frequency: 'WEEKLY', count: 3 } })).json();
+
+    const res = await fetch(`${baseUrl}/api/bookings/${created.booking.id}`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      // 14:00 in Paris on 23 September is 12:00 UTC
+      body: JSON.stringify({ notify: false, scope: 'single', occurrenceDate: '2030-09-23T12:00:00Z' }),
+    });
+    assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+
+    assert.equal(getBookedSlots('uma', '2030-09-16').length, 1);
+    assert.equal(getBookedSlots('uma', '2030-09-23').length, 0, 'cancelled occurrence is free');
+    assert.equal(getBookedSlots('uma', '2030-09-30').length, 1);
+  });
+
+  it('accepts "every 2 weeks" as a weekly rule with an interval', async () => {
+    const { getBookedSlots } = await import('../cloud/models/bookings-db.js');
+    const res = await book({ date: MONDAY, time: '16:00', recurrence: { frequency: 'WEEKLY', interval: 2, count: 2 } });
+    assert.equal(res.status, 201);
+    assert.equal(getBookedSlots('uma', '2030-09-23').length, 0);
+    assert.equal(getBookedSlots('uma', '2030-09-30').length, 1);
+    assert.equal((await book({ date: MONDAY, time: '17:00', recurrence: { frequency: 'biweekly' } })).status, 400);
+  });
+});

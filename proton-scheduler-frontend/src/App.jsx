@@ -400,6 +400,7 @@ export default function ProtonScheduler() {
             handleBooking={booking.handleBooking}
             saving={booking.saving}
             setView={setView}
+            allowRepeat
           />
         )}
 
