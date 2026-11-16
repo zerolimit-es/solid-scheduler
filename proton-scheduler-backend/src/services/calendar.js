@@ -47,7 +47,6 @@ export function generateAvailableSlots(availability, existingBookings = [], opti
   const {
     startDate = new Date(),
     endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days default
-    timezone = availability.timezone || 'UTC',
   } = options;
   
   const slots = [];

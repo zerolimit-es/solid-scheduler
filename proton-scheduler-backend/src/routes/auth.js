@@ -231,7 +231,7 @@ const router = createAuthRouter({
   },
 
   // ── Pod URL save: persist to tenant DB ──
-  onPodUrlSave: async (req, { webId, podUrl }) => {
+  onPodUrlSave: async (req, { podUrl }) => {
     if (req.tenant) {
       try {
         const { getDb } = await import('../cloud/models/database.js');

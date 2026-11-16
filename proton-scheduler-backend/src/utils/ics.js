@@ -238,7 +238,7 @@ export function generateICS(event) {
  * @param {Object} options - Options for occurrence generation
  * @returns {string} ICS file content with master event
  */
-export function generateRecurringICS(event, options = {}) {
+export function generateRecurringICS(event, _options = {}) {
   // For recurring events, we just generate the master event with RRULE
   // Calendar apps will expand the occurrences
   return generateICS(event);

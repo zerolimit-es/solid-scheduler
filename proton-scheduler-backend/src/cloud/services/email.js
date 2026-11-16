@@ -168,7 +168,7 @@ export async function sendOrganizerNotification({ booking, icsContent, organizer
   }
 
   const c = resolveColors(branding);
-  const { title, date, startTime, endTime, attendee } = booking;
+  const { date, startTime, endTime, attendee } = booking;
   const notesRow = booking.notes ? `<tr><td style="color:${c.textMuted};font-size:13px;padding:14px 20px">Notes</td><td style="color:${c.textSecondary};font-size:13px;padding:14px 20px;text-align:right;line-height:1.4">${escHtml(booking.notes)}</td></tr>` : '';
   const whereBottom = booking.notes ? `border-bottom:1px solid ${c.borderSolid};` : '';
 

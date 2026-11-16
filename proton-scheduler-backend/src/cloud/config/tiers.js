@@ -29,11 +29,11 @@ const TIERS = {
   },
 };
 
-export function getTier(tierName) {
+export function getTier(_tierName) {
   return TIERS.free;
 }
 
-export function getTierByPriceId(priceId) {
+export function getTierByPriceId(_priceId) {
   return 'free';
 }
 

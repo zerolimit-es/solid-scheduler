@@ -5,7 +5,6 @@ import { SCHEMA } from '../utils/rdf.js';
 
 // July 1, 2030 = Monday (far future to avoid minNotice filtering)
 const MON = new Date(2030, 6, 1);
-const TUE = new Date(2030, 6, 2);
 
 function makeAvailability(overrides = {}) {
   return {

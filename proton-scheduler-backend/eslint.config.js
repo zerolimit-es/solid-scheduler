@@ -11,8 +11,9 @@ export default [
       globals: globals.node,
     },
     rules: {
-      // Unused code is reported but does not fail the build; real errors do
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+      // Unused code fails the build. `const { dropped, ...rest } = obj` is the
+      // usual way to omit properties, so the dropped names are not counted.
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none', ignoreRestSiblings: true }],
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
