@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import { resolve, join, dirname } from 'path';
+import { resolve, join } from 'path';
 import { readFileSync, existsSync } from 'fs';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -24,7 +24,7 @@ function zerolimitResolver() {
       const subpath = './' + id.slice(PKG.length + 1); // e.g. "./solid-auth/react"
 
       if (!exportsMap) {
-        pkgDir = resolve(__dirname, 'node_modules', PKG);
+        pkgDir = resolve(import.meta.dirname, 'node_modules', PKG);
         try {
           const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
           exportsMap = pkg.exports || {};

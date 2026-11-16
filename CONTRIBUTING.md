@@ -159,7 +159,7 @@ DEFAULT_SOLID_IDP=https://login.inrupt.com
    git checkout -b fix/issue-description
    ```
 3. Make your changes following the style guides below
-4. Test your changes — run `npm test` and `npm run lint` in the backend
+4. Test your changes — run `npm test` and `npm run lint` in the backend, and `npm run lint` in the frontend
 5. Commit with clear, descriptive messages
 
 ### Commit Message Format

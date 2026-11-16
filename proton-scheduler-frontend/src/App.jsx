@@ -23,7 +23,7 @@ import PasskeyChallenge from './components/common/PasskeyChallenge';
 export default function ProtonScheduler() {
   // ── Public booking page detection ──────────────────────────────────────
   const [publicSlug] = useState(() => {
-    const match = window.location.pathname.match(/^\/book\/([^\/]+)/);
+    const match = window.location.pathname.match(/^\/book\/([^/]+)/);
     return match ? match[1] : null;
   });
 
