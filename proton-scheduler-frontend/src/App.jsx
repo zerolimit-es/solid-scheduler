@@ -75,11 +75,20 @@ export default function ProtonScheduler() {
   const [availSaving, setAvailSaving] = useState(false);
   const [availSaved, setAvailSaved] = useState(false);
 
+  // The dashboard's "Upcoming Meetings": the next few, soonest first. (The
+  // full list endpoint returns every booking ever made, oldest first.)
+  const loadUpcomingBookings = (pod) =>
+    api.bookings.getUpcoming(10, pod)
+      .then((res) => setBookings(res.bookings || []))
+      .catch(() => setBookings([]));
+
   // ── Booking flow (hook) ────────────────────────────────────────────────
   const booking = useBookings({
     user, publicSlug, availability, setView, setError,
     onBookingCreated: () => {
-      if (user) api.bookings.getStats(user.pods[0]).then(setStats).catch(() => {});
+      if (!user) return;
+      api.bookings.getStats(user.pods[0]).then(setStats).catch(() => {});
+      loadUpcomingBookings(user.pods[0]);
     },
   });
 
@@ -139,8 +148,7 @@ export default function ProtonScheduler() {
 
         setStats(statsRes);
 
-        const bookingsRes = await api.bookings.list(user.pods[0]).catch(() => ({ bookings: [] }));
-        setBookings(bookingsRes.bookings || []);
+        await loadUpcomingBookings(user.pods[0]);
       } catch (err) {
         setError(err.message);
       }
