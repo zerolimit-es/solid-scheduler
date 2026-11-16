@@ -5,7 +5,6 @@ import { useTheme } from './services/useTheme';
 import { api, getDefaultAvailability } from './services/api';
 import useAuth from './hooks/useAuth';
 import useBookings from './hooks/useBookings';
-import { extractDisplayName } from './utils/webid';
 
 // Core components (always needed)
 import Header from './components/layout/Header';
@@ -39,7 +38,7 @@ export default function ProtonScheduler() {
 
   // ── Auth ───────────────────────────────────────────────────────────────
   const {
-    user, setUser, authLoading, loggingOut,
+    user, authLoading, loggingOut,
     mfaPending, handleMfaSuccess,
     providers, selectedProvider, setSelectedProvider,
     handleLogin, logout,
@@ -70,7 +69,6 @@ export default function ProtonScheduler() {
   // ── Dashboard data ─────────────────────────────────────────────────────
   const [bookings, setBookings] = useState([]);
   const [stats, setStats] = useState({ thisWeek: 0, thisMonth: 0, upcoming: 0 });
-  const [dataLoading, setDataLoading] = useState(false);
   const [podStatus, setPodStatus] = useState({ connected: false, lastSync: null, synced: 0, failed: 0, source: null });
 
   // ── Availability save ──────────────────────────────────────────────────
@@ -122,7 +120,6 @@ export default function ProtonScheduler() {
     if (!user) return;
 
     const fetchData = async () => {
-      setDataLoading(true);
       try {
         // Pod is connected if user has pods
         if (user.pods?.length > 0) {
@@ -146,8 +143,6 @@ export default function ProtonScheduler() {
         setBookings(bookingsRes.bookings || []);
       } catch (err) {
         setError(err.message);
-      } finally {
-        setDataLoading(false);
       }
     };
 
@@ -175,29 +170,6 @@ export default function ProtonScheduler() {
     } finally {
       setAvailSaving(false);
     }
-  };
-
-  const toggleDay = (day) => {
-    setAvailability(prev => ({
-      ...prev,
-      days: {
-        ...prev.days,
-        [day]: { ...prev.days[day], enabled: !prev.days[day].enabled },
-      },
-    }));
-  };
-
-  const copyBookingLink = () => {
-    const slug = user?.bookingSlug || availability?.bookingSlug || 'my-booking';
-    navigator.clipboard.writeText(`${window.location.origin}/book/${slug}`);
-    setLinkCopied(true);
-    setTimeout(() => setLinkCopied(false), 2000);
-  };
-
-  const isDateAvailable = (date) => {
-    if (date < new Date().setHours(0, 0, 0, 0)) return false;
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    return availability?.days?.[dayNames[date.getDay()]]?.enabled ?? false;
   };
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -385,13 +357,10 @@ export default function ProtonScheduler() {
             setBookings={setBookings}
             stats={stats}
             podStatus={podStatus}
-            setPodStatus={setPodStatus}
             linkCopied={linkCopied}
             setLinkCopied={setLinkCopied}
             saving={availSaving}
-            setSaving={setAvailSaving}
             saved={availSaved}
-            setSaved={setAvailSaved}
             handleSaveAvailability={handleSaveAvailability}
             setAvailability={setAvailability}
             setError={setError}

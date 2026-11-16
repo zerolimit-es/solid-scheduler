@@ -7,8 +7,8 @@ import SecurityCard from './SecurityCard';
 import BlockedTimeCard from './BlockedTimeCard';
 
 export default function DashboardView({
-  user, availability, bookings, setBookings, stats, podStatus, setPodStatus,
-  linkCopied, setLinkCopied, saving, setSaving, saved, setSaved,
+  user, availability, bookings, setBookings, stats, podStatus,
+  linkCopied, setLinkCopied, saving, saved,
   handleSaveAvailability, setAvailability, setError,
 }) {
   const slug = user?.bookingSlug || availability?.bookingSlug || null;
