@@ -9,6 +9,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { instantToNaive, zonedToInstant, isValidTimeZone, parseNaive, addDays } from './tz.js';
+import { buildVTimezone } from './vtimezone.js';
 
 /**
  * Format a Date object to iCalendar datetime format (UTC with Z suffix)
@@ -26,18 +27,13 @@ function formatICSDateUTC(date) {
 }
 
 /**
- * Format a Date using server-local values (for TZID-qualified timestamps)
+ * Format an instant as wall-clock time in `tz` (for TZID-qualified timestamps)
  * @param {Date} date
+ * @param {string} tz - IANA timezone
  * @returns {string} YYYYMMDDTHHMMSS format (no Z)
  */
-function formatICSDateLocal(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth()+1).padStart(2,'0');
-  const d = String(date.getDate()).padStart(2,'0');
-  const h = String(date.getHours()).padStart(2,'0');
-  const mi = String(date.getMinutes()).padStart(2,'0');
-  const s = String(date.getSeconds()).padStart(2,'0');
-  return y+m+d+'T'+h+mi+s;
+function formatICSDateInZone(date, tz) {
+  return `${instantToNaive(date, tz).replace(/[-:]/g, '').replace(' ', 'T')}00`;
 }
 
 /**
@@ -52,13 +48,15 @@ function formatICSDate(date) {
  * @param {string} text 
  * @returns {string}
  */
-function escapeICSText(text) {
+export function escapeICSText(text) {
   if (!text) return '';
-  return text
+  return String(text)
     .replace(/\\/g, '\\\\')
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
-    .replace(/\n/g, '\\n');
+    // Every kind of line break becomes an escaped newline: a raw CR or LF
+    // would end the property and let the text start a new one
+    .replace(/\r\n|\r|\n/g, '\\n');
 }
 
 /**
@@ -156,7 +154,8 @@ export function generateICS(event) {
   const status = event.status || 'CONFIRMED';
   const method = event.method || 'REQUEST';
   
-  const tz = event.timezone || null;
+  // An unknown timezone name cannot be defined in the file: use UTC instead
+  const tz = isValidTimeZone(event.timezone) ? event.timezone : null;
 
   const lines = [
     'BEGIN:VCALENDAR',
@@ -164,6 +163,7 @@ export function generateICS(event) {
     'PRODID:-//SolidScheduler//Solid Calendar//EN',
     'CALSCALE:GREGORIAN',
     `METHOD:${method}`,
+    ...(tz ? buildVTimezone(tz) : []),
     'BEGIN:VEVENT',
     `UID:${uid}`,
     `DTSTAMP:${formatICSDateUTC(now)}`,
@@ -173,8 +173,8 @@ export function generateICS(event) {
   // otherwise fall back to UTC. TZID avoids "floating times not supported"
   // warnings in Proton Mail and other strict calendar clients.
   if (tz) {
-    lines.push(`DTSTART;TZID=${tz}:${formatICSDateLocal(event.start)}`);
-    lines.push(`DTEND;TZID=${tz}:${formatICSDateLocal(event.end)}`);
+    lines.push(`DTSTART;TZID=${tz}:${formatICSDateInZone(event.start, tz)}`);
+    lines.push(`DTEND;TZID=${tz}:${formatICSDateInZone(event.end, tz)}`);
   } else {
     lines.push(`DTSTART:${formatICSDateUTC(event.start)}`);
     lines.push(`DTEND:${formatICSDateUTC(event.end)}`);

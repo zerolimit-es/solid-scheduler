@@ -38,12 +38,6 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy frontend source
 COPY proton-scheduler-frontend/ ./
 
-# Build arguments for environment variables
-ARG VITE_API_URL=http://localhost:3001
-
-# Set environment variable for build
-ENV VITE_API_URL=$VITE_API_URL
-
 # Build the application
 RUN npm run build
 
@@ -54,9 +48,12 @@ FROM node:22-alpine AS development
 
 WORKDIR /workspace/proton-scheduler-frontend
 
-# Copy package files and install dependencies
+# git is needed to fetch the @zerolimit/packages dependency from GitHub
+RUN apk add --no-cache git
+
+# Copy package files and install dependencies (same way as the deps stage)
 COPY proton-scheduler-frontend/package*.json ./
-RUN npm ci
+RUN rm -f package-lock.json && npm install
 
 # Copy source code
 COPY proton-scheduler-frontend/ ./

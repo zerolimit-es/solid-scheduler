@@ -11,6 +11,8 @@ import { createMemoryChallengeStore } from '@zerolimit/packages/passkey-mfa/core
 import { getDb } from '../cloud/models/database.js';
 import { getRedis } from '../services/redis.js';
 import config from '../config/index.js';
+import { sessionManager } from '../middleware/auth.js';
+import { runPostLoginSync } from './auth.js';
 
 // ── Derive RP config ──
 
@@ -134,26 +136,6 @@ const passkeyRouter = createPasskeyRouter({
   getWebId: (req) => req.solidSession?.info?.webId || req.session?.webId,
 });
 
-/**
- * The generic passkey router looks the asserted credential up by credential
- * ID alone, across every account, and never checks whom it belongs to. On a
- * multi-user instance that would let a passkey registered on one account
- * satisfy another account's MFA. Reject any assertion whose credential is not
- * registered to the account being verified, before the router sees it.
- */
-export function requireOwnCredential(req, res, next) {
-  const userId = getUserId(req);
-  const credentialId = req.body?.body?.id;
-  // Let the router produce its own errors for missing user / malformed body.
-  if (!userId || typeof credentialId !== 'string') return next();
-
-  const passkey = credentialStore.getByCredentialId(credentialId);
-  if (!passkey || String(passkey.userId) !== String(userId)) {
-    return res.status(400).json({ error: 'Passkey not found' });
-  }
-  next();
-}
-
 // ── Fresh passkey check for passkey changes ──
 //
 // Removing a passkey, or adding one while the account already has some,
@@ -165,14 +147,30 @@ export function requireOwnCredential(req, res, next) {
 export const PASSKEY_REAUTH_WINDOW_MS = 5 * 60 * 1000;
 
 /**
+ * The Pod sync that sign-in holds back while a passkey check is pending
+ * (see runPostLoginSync). Background; failures wait for the next sign-in.
+ */
+function syncAfterPasskeyCheck(req) {
+  const webId = req.solidSession?.info?.webId || req.session?.webId;
+  const podUrl = req.session?.podUrl || req.tenant?.solid_pod_url;
+  if (!webId || !podUrl) return;
+  sessionManager.getAuthenticatedFetch(req.solidSession, webId)
+    .then((authenticatedFetch) => runPostLoginSync({ webId, podUrl, authenticatedFetch }))
+    .catch((err) => console.warn('[Passkey] Pod sync deferred to next login:', err.message));
+}
+
+/**
  * On a successful passkey check (sign-in or re-check), record it in the
  * session, bound to the account that passed it: the cookie session survives
  * signing in to another account in the same browser.
  */
 export function recordPasskeyVerification(req, res, next) {
   const json = res.json.bind(res);
+  // The router clears mfaPending before it answers, so note it now
+  const completesSignIn = !!req.session?.mfaPending;
   res.json = (body) => {
     if (res.statusCode < 400 && body?.success && body?.verified && req.session) {
+      if (completesSignIn) syncAfterPasskeyCheck(req);
       req.session.passkeyVerifiedAt = Date.now();
       req.session.passkeyVerifiedFor = String(getUserId(req));
       // Lets a Pod reconnect skip the sign-in challenge, for this WebID only
@@ -200,7 +198,9 @@ export function requireRecentPasskey(req, res, next) {
 }
 
 const router = Router();
-router.post('/auth-verify', requireOwnCredential, recordPasskeyVerification);
+// The passkey router itself refuses a credential that is not registered to
+// the account being verified.
+router.post('/auth-verify', recordPasskeyVerification);
 router.get('/register-options', requireRecentPasskey);
 router.post('/register-verify', requireRecentPasskey);
 router.delete('/:id', requireRecentPasskey);

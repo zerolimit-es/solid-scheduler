@@ -24,7 +24,7 @@ before(async () => {
   const express = (await import('express')).default;
   const cookieSession = (await import('cookie-session')).default;
   ({ sessionManager } = await import('../middleware/auth.js'));
-  const { default: authRoutes, rejectedLoginRedirect } = await import('./auth.js');
+  const { default: authRoutes } = await import('./auth.js');
 
   // Public WebID profile: the victim trusts only the real IdP.
   globalThis.fetch = async (url, init) => {
@@ -62,7 +62,6 @@ before(async () => {
     };
     next();
   });
-  app.use('/api/auth/callback', rejectedLoginRedirect);
   app.use('/api/auth', authRoutes);
 
   await new Promise((resolve) => { server = app.listen(0, resolve); });

@@ -11,13 +11,11 @@
 import crypto from 'crypto';
 import solidService from './solid.js';
 import emailService from './email.js';
-import { generateICS, generateRecurringICS, generateOccurrenceCancellationICS } from '../utils/ics.js';
-import { 
-  generateOccurrences, 
-  expandRecurringEvent, 
+import { generateICS } from '../utils/ics.js';
+import {
+  expandRecurringEvent,
   describeRecurrence,
-  buildRRule,
-  RECURRENCE_PRESETS 
+  RECURRENCE_PRESETS,
 } from '../utils/recurrence.js';
 import { SCHEMA } from '../utils/rdf.js';
 

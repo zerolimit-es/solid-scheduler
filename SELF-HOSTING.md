@@ -79,6 +79,18 @@ That's it. Caddy handles certificate issuance and renewal.
 
 If you already run a reverse proxy (Traefik, HAProxy, etc.), point it at the frontend container on port 80. The frontend container handles both static assets and API proxying to the backend.
 
+Two things make this work:
+
+1. Your proxy must send `X-Forwarded-Proto: https` and `X-Forwarded-For` (Traefik, Caddy and HAProxy's `option forwardfor` + `http-request set-header X-Forwarded-Proto https` do). The frontend container passes them on to the backend, which only sets its session cookie when it sees `https`. Without the header, signing in fails.
+2. Set `TRUST_PROXY=2` in `.env`. Requests now pass through two proxies (yours, then the frontend container) before reaching the backend. With the default of `1`, the backend takes your proxy's address for the visitor's, and all visitors share one rate limit.
+
+```env
+BASE_URL=https://scheduler.example.com
+FRONTEND_URL=https://scheduler.example.com
+FRONTEND_PORT=127.0.0.1:3000
+TRUST_PROXY=2
+```
+
 ## Solid Pod Setup
 
 SolidScheduler stores your scheduling data in a Solid Pod — a personal data store you control.
@@ -118,7 +130,7 @@ Set these in `.env`:
 ```
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
-SMTP_SECURE=true
+SMTP_SECURE=false
 SMTP_USER=your-email@example.com
 SMTP_PASS=your-app-password
 SMTP_FROM=noreply@scheduler.example.com
@@ -195,19 +207,53 @@ CALDAV_BOOKING_SLUG=your-booking-slug
 | `SESSION_SECRET` | Yes | — | 32+ character random string |
 | `DOMAIN` | Caddy only | — | Your domain (used by Caddy for auto-HTTPS) |
 | `FRONTEND_PORT` | No | `0.0.0.0:80` | Frontend port binding; set to `127.0.0.1:3000` behind a reverse proxy |
+| `DB_PATH` | No | `/data/solid-scheduler.db` | SQLite database file; set by the Docker image, keep it on the `/data` volume |
+| `TRUST_PROXY` | No | `1` | Number of reverse proxies in front of the backend. Leave at `1` for the bundled Caddy/nginx setups; set `2` with your own proxy in front of the frontend container (Option C) |
 | `REDIS_URL` | No | `redis://redis:6379` | Redis connection string |
 | `DEFAULT_SOLID_IDP` | No | `https://login.inrupt.com` | Solid identity provider URL |
 | `SMTP_HOST` | No | `127.0.0.1` | SMTP server hostname |
 | `SMTP_PORT` | No | `587` | SMTP server port |
-| `SMTP_SECURE` | No | `true` | Use TLS |
+| `SMTP_SECURE` | No | `false` | `true` for port 465 (TLS from the start); `false` for port 587 (STARTTLS). `true` with port 587 is treated as STARTTLS with TLS required |
 | `SMTP_USER` | No | — | SMTP username |
 | `SMTP_PASS` | No | — | SMTP password |
 | `SMTP_FROM` | No | — | Sender email address |
+| `SMTP_FROM_NAME` | No | `SolidScheduler` | Sender name shown in mail clients |
+| `ORGANIZER_NAME` | No | — | Name used on bookings for accounts that have not saved one in their settings |
+| `ORGANIZER_EMAIL` | No | — | Where booking notifications go for accounts that have not saved an email |
+| `ALLOW_PRIVATE_POD_HOSTS` | No | `false` | Allow users to set a Pod URL on a private network address (a Pod server on your own LAN) |
 | `CALDAV_ENABLED` | No | `false` | Enable CalDAV calendar sync |
 | `CALDAV_SERVER_URL` | With CalDAV | — | URL of the calendar (CalDAV collection) to copy bookings to |
 | `CALDAV_USERNAME` | With CalDAV | — | CalDAV username |
 | `CALDAV_PASSWORD` | With CalDAV | — | CalDAV password (use an app password where possible) |
 | `CALDAV_BOOKING_SLUG` | With CalDAV | — | Booking page whose bookings are copied; other accounts' bookings are never sent |
+
+## Data and Backups
+
+Accounts, bookings waiting to be synced, passkeys and blocked time are kept in a SQLite database at `/data/solid-scheduler.db` inside the backend container, on the `backend-data` Docker volume. The volume survives `docker compose down`, rebuilds and upgrades. It is deleted by `docker compose down -v` (and by `make clean`).
+
+To back it up:
+
+```bash
+docker compose exec backend sh -c 'cat /data/solid-scheduler.db' > solid-scheduler-backup.db
+```
+
+For a consistent copy, stop the backend first (`docker compose stop backend`) or take the backup at a quiet moment.
+
+### Upgrading from a version without the data volume
+
+Earlier versions kept the database inside the container itself (`/app/src/data/`), where it was lost whenever the container was recreated. **Before** you rebuild, copy it out of the running container and into the new volume:
+
+```bash
+docker compose stop backend
+docker cp solidscheduler-backend:/app/src/data ./solid-scheduler-data
+git pull
+docker compose up -d --build
+docker compose stop backend
+docker cp ./solid-scheduler-data/. solidscheduler-backend:/data/
+docker compose start backend
+```
+
+If `docker cp` reports that `/app/src/data` does not exist, there is nothing to migrate.
 
 ## Updating
 
@@ -229,6 +275,8 @@ Make sure `docker compose up -d` finished without errors. The frontend is built 
 ### Solid login fails
 
 Verify that `BASE_URL` matches the URL you are accessing the app from (including `https://`). Solid OIDC redirects will fail if there is a mismatch.
+
+If you run your own reverse proxy in front of the frontend container (Option C) and signing in returns you to the login screen, the session cookie is not being set: check that your proxy sends `X-Forwarded-Proto: https`.
 
 ### Emails not sending
 

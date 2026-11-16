@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import config from '../../config/index.js';
 
 /** Escape HTML special characters to prevent XSS in email templates. */
 function escHtml(str) {
@@ -11,18 +12,18 @@ function escHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+// Same SMTP settings as the rest of the app (config.email)
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'localhost',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
+  host: config.email.host,
+  port: config.email.port,
+  secure: config.email.secure,
+  requireTLS: config.email.requireTLS,
+  auth: config.email.user ? { user: config.email.user, pass: config.email.pass } : undefined,
+  tls: { rejectUnauthorized: config.nodeEnv === 'production' },
 });
 
-const FROM = `"${process.env.SMTP_FROM_NAME || 'SolidScheduler'}" <${process.env.SMTP_FROM || 'noreply@localhost'}>`;
-const ORGANIZER_EMAIL = process.env.ORGANIZER_EMAIL || '';
+const FROM = `"${config.email.fromName}" <${config.email.from}>`;
+const ORGANIZER_EMAIL = config.organizer.email;
 
 /** SolidScheduler defaults — used when tenant has no custom branding. */
 const PROTON = {

@@ -1,10 +1,40 @@
+# =============================================================================
+# SolidScheduler — Docker Compose (Development)
+# =============================================================================
+#
+#   ./start.sh dev        (or: docker compose -f docker-compose.dev.yml up --build)
+#
+# Frontend (Vite, hot reload):   http://localhost:3000
+# Backend  (node --watch):       http://localhost:3001
+#
+# Source directories are mounted into the containers, so edits on your machine
+# reload the app. After changing dependencies (package.json), rebuild with
+# --build. Secrets and SMTP settings come from .env; the URLs and NODE_ENV
+# below override whatever .env says so the same file works for production.
+# =============================================================================
+
 services:
+  frontend:
+    build:
+      context: .
+      dockerfile: proton-scheduler-frontend/Dockerfile
+      target: development
+    container_name: solidscheduler-dev-frontend
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    volumes:
+      - ./proton-scheduler-frontend/src:/workspace/proton-scheduler-frontend/src:ro
+      - ./proton-scheduler-frontend/index.html:/workspace/proton-scheduler-frontend/index.html:ro
+    environment:
+      - VITE_PROXY_TARGET=http://backend:3001
+    depends_on: [backend]
+    networks: [dev]
+
   backend:
     dns: [8.8.8.8, 1.1.1.1]
     build:
       context: ./proton-scheduler-backend
-      args:
-        GIT_AUTH_TOKEN: ${GIT_AUTH_TOKEN:-}
+      target: development
     container_name: solidscheduler-dev-backend
     restart: unless-stopped
     env_file: .env
@@ -16,6 +46,11 @@ services:
     networks: [dev]
     environment:
       - NODE_ENV=development
+      - BASE_URL=http://localhost:3001
+      - FRONTEND_URL=http://localhost:3000
+      - REDIS_URL=redis://redis:6379
+      - DB_PATH=/data/solid-scheduler.db
+
   redis:
     image: redis:7-alpine
     container_name: solidscheduler-dev-redis
@@ -23,8 +58,10 @@ services:
     command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
     volumes: [dev-redis:/data]
     networks: [dev]
+
 volumes:
   dev-data:
   dev-redis:
+
 networks:
   dev:

@@ -23,8 +23,6 @@ services:
       context: .
       dockerfile: proton-scheduler-frontend/Dockerfile
       target: production
-      args:
-        VITE_API_URL: ${BASE_URL:-http://localhost:3001}
     container_name: solidscheduler-frontend
     restart: unless-stopped
     ports:
@@ -38,13 +36,13 @@ services:
   backend:
     build:
       context: ./proton-scheduler-backend
-      args:
-        GIT_AUTH_TOKEN: ${GIT_AUTH_TOKEN:-}
     container_name: solidscheduler-backend
     restart: unless-stopped
     env_file: .env
     ports:
       - "127.0.0.1:3001:3001"
+    volumes:
+      - backend-data:/data   # SQLite database (accounts, bookings, passkeys)
     depends_on:
       redis:
         condition: service_started
@@ -63,6 +61,7 @@ services:
       - internal
 
 volumes:
+  backend-data:
   redis-data:
 
 networks:

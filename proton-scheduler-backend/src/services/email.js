@@ -24,6 +24,7 @@ function getTransporter() {
     host: config.email.host,
     port: config.email.port,
     secure: config.email.secure,
+    requireTLS: config.email.requireTLS,
     auth: config.email.user ? {
       user: config.email.user,
       pass: config.email.pass,
@@ -86,7 +87,7 @@ export async function sendBookingConfirmation(booking, options = {}) {
   
   // Email to attendee
   const attendeeEmail = {
-    from: `"SolidScheduler" <${config.email.from}>`,
+    from: `"${config.email.fromName}" <${config.email.from}>`,
     to: booking.attendee.email,
     subject: `Confirmed: ${booking.title} with ${booking.organizer.name}`,
     text: `
@@ -176,7 +177,7 @@ Scheduled with SolidScheduler - Privacy-first scheduling
   
   // Email to organizer
   const organizerEmail = {
-    from: `"SolidScheduler" <${config.email.from}>`,
+    from: `"${config.email.fromName}" <${config.email.from}>`,
     to: booking.organizer.email,
     subject: `New Booking: ${booking.title} with ${booking.attendee.name}`,
     text: `
@@ -316,7 +317,7 @@ export async function sendCancellationNotice(booking, options = {}) {
   const cancelledBy = options.cancelledBy || 'the organizer';
   
   const emailContent = {
-    from: `"SolidScheduler" <${config.email.from}>`,
+    from: `"${config.email.fromName}" <${config.email.from}>`,
     subject: `Cancelled: ${booking.title}`,
     text: `
 Meeting Cancelled
@@ -442,7 +443,7 @@ export async function sendReminder(booking, recipientType = 'attendee') {
   };
   
   const email = {
-    from: `"SolidScheduler" <${config.email.from}>`,
+    from: `"${config.email.fromName}" <${config.email.from}>`,
     to: recipient.email,
     subject: `Reminder: ${booking.title} - ${formatDateTime(booking.start)}`,
     text: `

@@ -12,9 +12,16 @@
  * 5. Old synced records can be cleared (Pod has the data)
  */
 
-import { getUnsyncedBookings, markBookingSynced } from '../models/bookings-db.js';
+import {
+  getUnsyncedBookings,
+  markBookingSynced,
+  getPendingPodCancellations,
+  clearPodCancelPending,
+  getAvailability,
+} from '../models/bookings-db.js';
 import { getUnsyncedCalendarEvents, markCalendarEventSynced } from '../models/calendar-events-db.js';
 import solidService from '../../services/solid.js';
+import { organizerIdentity } from '../../utils/organizer.js';
 
 /**
  * Convert a naive local time (from SQLite) to a proper UTC ISO string.
@@ -74,6 +81,7 @@ export async function syncBookingsToPod(podUrl, fetch, slug, timezone = 'Europe/
   }
 
   console.log(`[Pod Sync] Starting sync: ${unsynced.length} bookings to push to Pod`);
+  const host = organizerIdentity(getAvailability(slug));
 
   let synced = 0;
   let failed = 0;
@@ -102,9 +110,11 @@ export async function syncBookingsToPod(podUrl, fetch, slug, timezone = 'Europe/
         end: endISO,
         description: booking.notes || '',
         location: booking.location || 'Video Call',
+        // As recorded when it was booked; older rows have none, so fall back
+        // to the account's current name
         organizer: {
-          name: process.env.ORGANIZER_NAME || 'Organizer',
-          email: process.env.ORGANIZER_EMAIL || '',
+          name: booking.organizer_name || host.name,
+          email: booking.organizer_email || host.email,
         },
         attendee: {
           name: booking.attendee_name,
@@ -131,6 +141,37 @@ export async function syncBookingsToPod(podUrl, fetch, slug, timezone = 'Europe/
   console.log(`[Pod Sync] Complete: ${synced} synced, ${failed} failed out of ${unsynced.length}`);
 
   return { synced, failed, total: unsynced.length };
+}
+
+/**
+ * Cancel, in the Pod, the bookings of one page that were cancelled locally
+ * after they had been synced (a visitor cancelling while the owner was
+ * signed out). Each stays pending until its Pod copy is updated.
+ *
+ * @param {string} podUrl - The owner's Pod; only resources inside it are touched
+ * @param {Function} fetch - Authenticated fetch from the owner's Solid session
+ * @param {string} slug - The owner's booking slug
+ * @returns {Promise<{ cancelled: number, failed: number, total: number }>}
+ */
+export async function syncCancellationsToPod(podUrl, fetch, slug) {
+  if (!slug || !podUrl) return { cancelled: 0, failed: 0, total: 0 };
+  const pending = getPendingPodCancellations(slug);
+  let cancelled = 0;
+  let failed = 0;
+
+  for (const booking of pending) {
+    if (!booking.pod_url.startsWith(podUrl)) { failed++; continue; }
+    try {
+      await solidService.cancelBooking(booking.pod_url, fetch);
+      clearPodCancelPending(booking.id);
+      cancelled++;
+      console.log(`[Pod Sync] ✓ Cancelled in Pod: ${booking.id}`);
+    } catch (err) {
+      failed++;
+      console.error(`[Pod Sync] ✗ Failed to cancel ${booking.id} in Pod:`, err.message);
+    }
+  }
+  return { cancelled, failed, total: pending.length };
 }
 
 /**
@@ -334,6 +375,7 @@ function utcISOToNaiveLocal(isoString, timezone) {
 
 export default {
   syncBookingsToPod,
+  syncCancellationsToPod,
   loadBookingsWithFallback,
   syncCalendarEventsToPod,
   loadCalendarEventsWithFallback,
