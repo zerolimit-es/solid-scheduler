@@ -13,11 +13,10 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'solid-scheduler-test-'));
 process.env.DB_PATH = path.join(tmpDir, 'test.db');
 delete process.env.DB_ENCRYPTION_KEY;
 
-let getDb, requireOwnCredential, getUnsyncedBookings, syncBookingsToPod, initBookingsTable;
+let getDb, getUnsyncedBookings, syncBookingsToPod, initBookingsTable;
 
 before(async () => {
   ({ getDb } = await import('../cloud/models/database.js'));
-  ({ requireOwnCredential } = await import('./passkey.js'));
   ({ getUnsyncedBookings, initBookingsTable } = await import('../cloud/models/bookings-db.js'));
   ({ syncBookingsToPod } = await import('../cloud/services/pod-sync.js'));
 
@@ -44,39 +43,64 @@ after(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-function runGuard(req) {
-  let status = null;
-  let body = null;
-  let nextCalled = false;
-  const res = {
-    status(code) { status = code; return this; },
-    json(b) { body = b; return this; },
-  };
-  requireOwnCredential(req, res, () => { nextCalled = true; });
-  return { status, body, nextCalled };
+/**
+ * The passkey routes as server.js mounts them, with a plain object standing
+ * in for the cookie session of the account in the x-tenant header.
+ */
+async function passkeyApp() {
+  const express = (await import('express')).default;
+  const passkeyRoutes = (await import('./passkey.js')).default;
+  const sessions = new Map();
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    const tenantId = req.get('x-tenant');
+    if (!sessions.has(tenantId)) sessions.set(tenantId, { webId: `https://${tenantId}.example/#me`, tenantId });
+    req.session = sessions.get(tenantId);
+    next();
+  });
+  app.use('/api/auth/passkey', passkeyRoutes);
+  const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+  return { server, baseUrl: `http://127.0.0.1:${server.address().port}`, sessions };
 }
 
-describe('passkey auth-verify ownership guard', () => {
-  it("rejects another account's passkey", () => {
-    const r = runGuard({ session: { tenantId: 'tenant-alice' }, body: { body: { id: 'cred-mallory' } } });
-    assert.equal(r.nextCalled, false);
+describe('passkey auth-verify only accepts the account\'s own credential', () => {
+  let app;
+  before(async () => { app = await passkeyApp(); });
+  after(() => app.server.close());
+
+  /** Start a passkey check as `tenantId`, then answer it with `credentialId`. */
+  async function verifyWith(tenantId, credentialId) {
+    const headers = { 'x-tenant': tenantId, 'Content-Type': 'application/json' };
+    const options = await fetch(`${app.baseUrl}/api/auth/passkey/auth-options`, { headers });
+    assert.equal(options.status, 200);
+    const res = await fetch(`${app.baseUrl}/api/auth/passkey/auth-verify`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ body: { id: credentialId, rawId: credentialId, type: 'public-key', response: {} } }),
+    });
+    return { status: res.status, body: await res.json() };
+  }
+
+  it("rejects another account's passkey before verifying anything", async () => {
+    app.sessions.set('tenant-alice', { webId: 'https://alice.example/#me', tenantId: 'tenant-alice', mfaPending: true });
+    const r = await verifyWith('tenant-alice', 'cred-mallory');
     assert.equal(r.status, 400);
+    assert.equal(r.body.error, 'Passkey not found');
+    assert.equal(app.sessions.get('tenant-alice').mfaPending, true, 'the passkey check is still pending');
   });
 
-  it('rejects an unknown credential', () => {
-    const r = runGuard({ session: { tenantId: 'tenant-alice' }, body: { body: { id: 'nope' } } });
-    assert.equal(r.nextCalled, false);
+  it('rejects an unknown credential', async () => {
+    const r = await verifyWith('tenant-alice', 'nope');
+    assert.equal(r.status, 400);
+    assert.equal(r.body.error, 'Passkey not found');
   });
 
-  it("passes the account's own passkey through", () => {
-    const r = runGuard({ tenant: { id: 'tenant-alice' }, body: { body: { id: 'cred-alice' } } });
-    assert.equal(r.nextCalled, true);
-    assert.equal(r.status, null);
-  });
-
-  it('leaves malformed requests to the router', () => {
-    assert.equal(runGuard({ session: {}, body: { body: { id: 'cred-alice' } } }).nextCalled, true);
-    assert.equal(runGuard({ session: { tenantId: 'tenant-alice' }, body: {} }).nextCalled, true);
+  it("gets as far as verifying the account's own passkey", async () => {
+    // A made-up assertion cannot verify, but it must fail there, not at the ownership check
+    const r = await verifyWith('tenant-alice', 'cred-alice');
+    assert.notEqual(r.body.error, 'Passkey not found');
+    assert.equal(app.sessions.get('tenant-alice').mfaPending, true);
   });
 });
 

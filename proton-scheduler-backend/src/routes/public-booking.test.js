@@ -143,6 +143,7 @@ describe('public bookings are accepted only for offered times', () => {
     assert.equal(row.start_time, `${MONDAY} 09:00`);
     assert.equal(row.end_time, `${MONDAY} 10:00`);
     assert.match(row.ics_content, /DTEND;TZID=Europe\/Paris:20300909T100000/);
+    assert.match(row.ics_content, /BEGIN:VTIMEZONE\r\nTZID:Europe\/Paris/, 'the invitation defines its timezone');
   });
 
   it('refuses times off the slot grid or outside working hours', async () => {

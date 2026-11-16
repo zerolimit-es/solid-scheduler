@@ -2,7 +2,6 @@ import crypto from 'crypto';
 import { validate, publicBookingSchema } from '../middleware/validate.js';
 import { bookingLimiter, publicReadLimiter } from '../middleware/rateLimit.js';
 import { Router } from 'express';
-import { generateICS } from '../utils/ics.js';
 import { safeMessage } from '../utils/errorResponse.js';
 import { caldav, naiveToISO } from '../services/caldav.js';
 import {
@@ -27,6 +26,8 @@ import { getTenantBySlug, getUsage, incrementUsage, getDb, getBranding } from '.
 import { checkLimit } from '../cloud/config/tiers.js';
 import { isValidTimeZone, instantToNaive, parseNaive } from '../utils/tz.js';
 import { organizerIdentity } from '../utils/organizer.js';
+import { buildVTimezone } from '../utils/vtimezone.js';
+import { escapeICSText } from '../utils/ics.js';
 import config from '../config/index.js';
 import {
   listActiveTeamMembers,
@@ -334,6 +335,8 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
       'PRODID:-//SolidScheduler//Privacy-First Scheduling//EN',
       'CALSCALE:GREGORIAN',
       'METHOD:REQUEST',
+      // The file must define the timezone its times refer to
+      ...buildVTimezone(tz),
       'BEGIN:VEVENT',
       `UID:${bookingId}@solidscheduler.local`,
       `DTSTAMP:${nowICS}`,
@@ -529,9 +532,7 @@ function fmtNowUTC() {
   return `${d.getUTCFullYear()}${(d.getUTCMonth()+1).toString().padStart(2,'0')}${d.getUTCDate().toString().padStart(2,'0')}T${d.getUTCHours().toString().padStart(2,'0')}${d.getUTCMinutes().toString().padStart(2,'0')}${d.getUTCSeconds().toString().padStart(2,'0')}Z`;
 }
 
-function esc(t) {
-  if (!t) return '';
-  return t.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
-}
+/** Escape text for an iCalendar property (also neutralises line breaks). */
+const esc = escapeICSText;
 
 export default router;

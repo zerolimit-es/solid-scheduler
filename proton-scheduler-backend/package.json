@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test src/**/*.test.js"
+    "lint": "eslint src",
+    "test": "node --test \"src/**/*.test.js\""
   },
   "keywords": [
     "solid",
@@ -42,6 +43,9 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
     "prettier": "^3.9.8"
   },
   "engines": {

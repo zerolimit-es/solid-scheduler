@@ -81,20 +81,37 @@ describe('generateICS', () => {
   });
 
   it('formats DTSTART/DTEND with TZID when timezone is provided', () => {
-    // Use local-time constructor since TZID path uses formatICSDateLocal
+    // 09:00 UTC is 10:00 in Paris in January, whatever the server's own timezone
     const ics = generateICS({
       ...makeEvent(),
-      start: new Date(2025, 0, 6, 10, 0, 0),
-      end: new Date(2025, 0, 6, 10, 30, 0),
+      start: new Date('2025-01-06T09:00:00Z'),
+      end: new Date('2025-01-06T09:30:00Z'),
       timezone: 'Europe/Paris',
     });
-    const dtstart = getLine(ics, 'DTSTART');
-    const dtend = getLine(ics, 'DTEND');
-    // TZID format: DTSTART;TZID=Europe/Paris:YYYYMMDDTHHMMSS (no Z)
-    assert.match(dtstart, /DTSTART;TZID=Europe\/Paris:\d{8}T\d{6}$/);
-    assert.match(dtend, /DTEND;TZID=Europe\/Paris:\d{8}T\d{6}$/);
-    assert.ok(dtstart.includes('20250106T100000'));
-    assert.ok(dtend.includes('20250106T103000'));
+    const lines = ics.split('\r\n');
+    assert.ok(lines.includes('DTSTART;TZID=Europe/Paris:20250106T100000'), ics);
+    assert.ok(lines.includes('DTEND;TZID=Europe/Paris:20250106T103000'), ics);
+  });
+
+  it('defines the timezone it refers to (VTIMEZONE before the event)', () => {
+    const ics = generateICS({ ...makeEvent(), timezone: 'Europe/Paris' });
+    const lines = ics.split('\r\n');
+    const tzStart = lines.indexOf('BEGIN:VTIMEZONE');
+    assert.ok(tzStart > 0, 'has a VTIMEZONE');
+    assert.equal(lines[tzStart + 1], 'TZID:Europe/Paris');
+    assert.ok(lines.indexOf('END:VTIMEZONE') < lines.indexOf('BEGIN:VEVENT'));
+    assert.ok(lines.includes('BEGIN:DAYLIGHT') && lines.includes('TZOFFSETTO:+0200'));
+  });
+
+  it('falls back to UTC for a timezone name it cannot define', () => {
+    const ics = generateICS({ ...makeEvent(), start: new Date('2025-01-06T09:00:00Z'), timezone: 'Mars/Olympus' });
+    assert.ok(ics.includes('DTSTART:20250106T090000Z'));
+    assert.ok(!ics.includes('TZID'));
+  });
+
+  it('escapes every kind of line break in text', () => {
+    const ics = generateICS({ ...makeEvent(), description: 'one\r\ntwo\rthree\nfour' });
+    assert.ok(ics.includes('DESCRIPTION:one\\ntwo\\nthree\\nfour'), ics);
   });
 
   it('uses provided UID', () => {
@@ -570,7 +587,7 @@ describe('parseICSCalendar (import)', async () => {
   });
 
   it('ignores properties of nested components and unescapes text', () => {
-    const [e] = parse(cal(ev('UID:g', 'SUMMARY:Lunch\\, team\; long', 'DTSTART:20300115T120000', 'DTEND:20300115T130000',
+    const [e] = parse(cal(ev('UID:g', 'SUMMARY:Lunch\\, team\\; long', 'DTSTART:20300115T120000', 'DTEND:20300115T130000',
       'TRANSP:TRANSPARENT', 'STATUS:CANCELLED', 'BEGIN:VALARM', 'DESCRIPTION:Reminder', 'SUMMARY:Alarm', 'END:VALARM')));
     assert.equal(e.title, 'Lunch, team; long');
     assert.equal(e.description, undefined);

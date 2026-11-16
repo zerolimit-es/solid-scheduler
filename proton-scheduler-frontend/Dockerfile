@@ -38,12 +38,6 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy frontend source
 COPY proton-scheduler-frontend/ ./
 
-# Build arguments for environment variables
-ARG VITE_API_URL=http://localhost:3001
-
-# Set environment variable for build
-ENV VITE_API_URL=$VITE_API_URL
-
 # Build the application
 RUN npm run build
 

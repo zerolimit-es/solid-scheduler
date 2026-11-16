@@ -23,7 +23,7 @@ import solidService from '../services/solid.js';
 import calendarService from '../services/calendar.js';
 import { generateICS } from '../utils/ics.js';
 import { SCHEMA } from '../utils/rdf.js';
-import { describeRecurrence, RECURRENCE_PRESETS } from '../utils/recurrence.js';
+import { describeRecurrence } from '../utils/recurrence.js';
 import { checkLimit } from '../cloud/config/tiers.js';
 import { requireFeature } from '../cloud/middleware/tierEnforcement.js';
 import { getUsage, incrementUsage, getDb } from '../cloud/models/database.js';

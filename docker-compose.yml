@@ -23,8 +23,6 @@ services:
       context: .
       dockerfile: proton-scheduler-frontend/Dockerfile
       target: production
-      args:
-        VITE_API_URL: ${BASE_URL:-http://localhost:3001}
     container_name: solidscheduler-frontend
     restart: unless-stopped
     ports:
@@ -38,8 +36,6 @@ services:
   backend:
     build:
       context: ./proton-scheduler-backend
-      args:
-        GIT_AUTH_TOKEN: ${GIT_AUTH_TOKEN:-}
     container_name: solidscheduler-backend
     restart: unless-stopped
     env_file: .env

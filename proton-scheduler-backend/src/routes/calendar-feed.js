@@ -13,9 +13,11 @@
 import { Router } from 'express';
 import { publicReadLimiter } from '../middleware/rateLimit.js';
 import { getTenantByFeedToken, getCalendarEventsInRange } from '../cloud/models/calendar-events-db.js';
-import { getBookingsBySlug } from '../cloud/models/bookings-db.js';
+import { getAvailability } from '../cloud/models/bookings-db.js';
 import { getDb } from '../cloud/models/database.js';
-import { v4 as uuidv4 } from 'uuid';
+import { escapeICSText as escapeICS } from '../utils/ics.js';
+import { buildVTimezone } from '../utils/vtimezone.js';
+import { isValidTimeZone } from '../utils/tz.js';
 
 const router = Router();
 
@@ -38,6 +40,12 @@ router.get('/:token.ics', publicReadLimiter, (req, res) => {
 
     const calName = tenant.company_name || tenant.email || 'SolidScheduler Calendar';
     const slug = tenant.booking_slug;
+
+    // Stored times are wall-clock times in the account's timezone. They are
+    // written with that TZID (and the feed defines it) so every subscriber
+    // sees the right instant, including across DST for repeating events.
+    const savedTz = slug ? getAvailability(slug)?.timezone : null;
+    const tz = isValidTimeZone(savedTz) ? savedTz : 'Europe/Paris';
 
     // Get bookings (upcoming, last 30 days, next 90 days)
     const now = new Date();
@@ -67,17 +75,18 @@ router.get('/:token.ics', publicReadLimiter, (req, res) => {
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
       `X-WR-CALNAME:${escapeICS(calName)}`,
-      'X-WR-TIMEZONE:UTC',
+      `X-WR-TIMEZONE:${tz}`,
+      ...buildVTimezone(tz),
     ];
 
     // Add bookings as VEVENTs
     for (const b of bookings) {
-      lines.push(...bookingToVEvent(b));
+      lines.push(...bookingToVEvent(b, tz));
     }
 
     // Add calendar events as VEVENTs
     for (const e of calEvents) {
-      lines.push(...calEventToVEvent(e));
+      lines.push(...calEventToVEvent(e, tz));
     }
 
     lines.push('END:VCALENDAR');
@@ -97,8 +106,10 @@ router.get('/:token.ics', publicReadLimiter, (req, res) => {
   }
 });
 
-function bookingToVEvent(b) {
-  const uid = `booking-${b.id}@solidscheduler.local`;
+function bookingToVEvent(b, tz) {
+  // Same UID as the invitation emailed for this booking, so a calendar that
+  // has both shows one event, not two
+  const uid = `${b.id}@solidscheduler.local`;
   const dtstart = naiveToICSDate(b.start_time);
   const dtend = naiveToICSDate(b.end_time);
   const created = b.created_at ? dateToICS(new Date(b.created_at)) : dateToICS(new Date());
@@ -106,8 +117,8 @@ function bookingToVEvent(b) {
   return [
     'BEGIN:VEVENT',
     `UID:${uid}`,
-    `DTSTART:${dtstart}`,
-    `DTEND:${dtend}`,
+    `DTSTART;TZID=${tz}:${dtstart}`,
+    `DTEND;TZID=${tz}:${dtend}`,
     `DTSTAMP:${created}`,
     `SUMMARY:${escapeICS(b.title)}`,
     b.location ? `LOCATION:${escapeICS(b.location)}` : null,
@@ -118,8 +129,8 @@ function bookingToVEvent(b) {
   ].filter(Boolean);
 }
 
-function calEventToVEvent(e) {
-  const uid = e.ics_uid || `calevent-${e.id}@solidscheduler.local`;
+function calEventToVEvent(e, tz) {
+  const uid = escapeICS(e.ics_uid) || `calevent-${e.id}@solidscheduler.local`;
   const dtstart = e.all_day ? naiveToICSDateOnly(e.start_time) : naiveToICSDate(e.start_time);
   const dtend = e.all_day ? naiveToICSDateOnly(e.end_time) : naiveToICSDate(e.end_time);
   const created = e.created_at ? dateToICS(new Date(e.created_at)) : dateToICS(new Date());
@@ -127,8 +138,8 @@ function calEventToVEvent(e) {
   const lines = [
     'BEGIN:VEVENT',
     `UID:${uid}`,
-    e.all_day ? `DTSTART;VALUE=DATE:${dtstart}` : `DTSTART:${dtstart}`,
-    e.all_day ? `DTEND;VALUE=DATE:${dtend}` : `DTEND:${dtend}`,
+    e.all_day ? `DTSTART;VALUE=DATE:${dtstart}` : `DTSTART;TZID=${tz}:${dtstart}`,
+    e.all_day ? `DTEND;VALUE=DATE:${dtend}` : `DTEND;TZID=${tz}:${dtend}`,
     `DTSTAMP:${created}`,
     `SUMMARY:${escapeICS(e.title)}`,
   ];
@@ -143,10 +154,6 @@ function calEventToVEvent(e) {
 }
 
 // Helpers
-
-function escapeICS(str) {
-  return (str || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
-}
 
 /** Convert "YYYY-MM-DD HH:MM" → "YYYYMMDDTHHMMSS" (naive, no timezone) */
 function naiveToICSDate(naiveStr) {

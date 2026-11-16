@@ -194,3 +194,34 @@ describe('a booking carries the name of the account it is with', () => {
     assert.equal((await res.json()).booking.title, 'Meeting - Rui Visitor & Instance Default');
   });
 });
+
+describe('anonymous visitors are not given a cookie', () => {
+  const cookiesSet = (res) => res.headers.getSetCookie().length;
+
+  it('sets none on public pages, the sign-in status check, or a booking', async () => {
+    for (const urlPath of ['/api/public/pia', '/api/public/pia/availability', '/api/public/pia/slots?date=2030-09-16',
+      '/api/auth/status', '/api/auth/providers', '/health']) {
+      const res = await fetch(`${baseUrl}${urlPath}`);
+      assert.equal(res.status, 200, urlPath);
+      assert.equal(cookiesSet(res), 0, urlPath);
+    }
+    const booking = await fetch(`${baseUrl}/api/public/pia/book`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: '2030-09-16', time: '14:00', name: 'Tess Visitor', email: 'tess@example.com' }),
+    });
+    assert.equal(booking.status, 201);
+    assert.equal(cookiesSet(booking), 0);
+  });
+
+  it('starts a session where one is needed: the CSRF token for signed-in use', async () => {
+    const res = await fetch(`${baseUrl}/api/csrf-token`);
+    assert.ok((await res.json()).csrfToken);
+    assert.ok(cookiesSet(res) > 0);
+  });
+
+  it('still refuses a cookieless state-changing request to a protected route', async () => {
+    const res = await fetch(`${baseUrl}/api/auth/logout`, { method: 'POST' });
+    assert.equal(res.status, 403);
+  });
+});

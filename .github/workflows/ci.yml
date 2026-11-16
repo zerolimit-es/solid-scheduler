@@ -40,6 +40,9 @@ jobs:
       - name: Check syntax (dry run)
         run: node --check src/server.js
 
+      - name: Lint
+        run: npm run lint
+
       - name: Run tests
         run: npm test
 

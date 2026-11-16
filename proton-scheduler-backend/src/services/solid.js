@@ -49,7 +49,6 @@ import {
 } from '@inrupt/solid-client';
 
 import { SCHEMA, SCHED } from '../utils/rdf.js';
-import { buildRRule } from '../utils/rrule.js';
 
 const podPaths = config.pod;
 

@@ -125,6 +125,12 @@ describe('calendar feed token (#67)', () => {
     const ics = await feed.text();
     assert.match(ics, /BEGIN:VCALENDAR/);
     assert.match(ics, /SUMMARY:Feed test meeting/);
+    // Times carry the account's timezone, which the feed defines; the UID
+    // matches the emailed invitation for the same booking
+    assert.match(ics, /BEGIN:VTIMEZONE\r\nTZID:Europe\/Paris/);
+    assert.match(ics, /X-WR-TIMEZONE:Europe\/Paris/);
+    assert.match(ics, new RegExp(`DTSTART;TZID=Europe/Paris:${soon.replace(/-/g, '')}T100000`));
+    assert.match(ics, /UID:feed-test-1@solidscheduler\.local/);
     // Same feed on the legacy direct-backend path
     assert.equal((await fetch(`${baseUrl}/cal/${first.body.token}.ics`)).status, 200);
 
