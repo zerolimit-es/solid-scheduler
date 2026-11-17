@@ -19,7 +19,7 @@ import PasskeyChallenge from './components/common/PasskeyChallenge';
 
 // No lazy-loaded components in open-source edition
 
-export default function ProtonScheduler() {
+export default function SolidScheduler() {
   // ── Public booking page detection ──────────────────────────────────────
   const [publicSlug] = useState(() => {
     const match = window.location.pathname.match(/^\/book\/([^/]+)/);
@@ -192,7 +192,7 @@ export default function ProtonScheduler() {
   // Loading screen
   if (authLoading && !publicSlug) {
     return (
-      <div className="proton-scheduler">
+      <div className="solid-scheduler">
         <div className="grain-overlay" />
         <div className="flex flex-col items-center justify-center min-h-screen gap-4">
           <LoaderIcon className="w-12 h-12 text-[var(--color-info)]" />
@@ -205,7 +205,7 @@ export default function ProtonScheduler() {
   // Logging out screen
   if (loggingOut && !publicSlug) {
     return (
-      <div className="proton-scheduler">
+      <div className="solid-scheduler">
         <div className="grain-overlay" />
         <div className="flex flex-col items-center justify-center min-h-screen gap-4">
           <LoaderIcon className="w-12 h-12 text-[var(--color-info)]" />
@@ -218,7 +218,7 @@ export default function ProtonScheduler() {
   // MFA passkey challenge
   if (user && mfaPending && !publicSlug) {
     return (
-      <div className="proton-scheduler">
+      <div className="solid-scheduler">
         <div className="grain-overlay" />
         <PasskeyChallenge onSuccess={handleMfaSuccess} />
       </div>
@@ -228,7 +228,7 @@ export default function ProtonScheduler() {
   // Login screen
   if (!user && !publicSlug) {
     return (
-      <div className="proton-scheduler">
+      <div className="solid-scheduler">
         <div className="grain-overlay" />
         <div className="max-w-[1200px] mx-auto p-8 relative z-[1]">
           <LoginScreen
@@ -254,7 +254,7 @@ export default function ProtonScheduler() {
   // ── Public booking page (no login required) ────────────────────────────
   if (publicSlug) {
     return (
-      <div className="proton-scheduler">
+      <div className="solid-scheduler">
         <div className="grain-overlay" />
         <div className="max-w-[1200px] mx-auto p-8 relative z-[1]">
           <header className="flex justify-between items-center mb-8 pb-6 border-b border-[var(--theme-header-border)] flex-wrap gap-4">
@@ -342,7 +342,7 @@ export default function ProtonScheduler() {
 
   // ── Authenticated app ──────────────────────────────────────────────────
   return (
-    <div className="proton-scheduler">
+    <div className="solid-scheduler">
       <div className="grain-overlay" />
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-[var(--brand-primary)] focus:text-white focus:rounded-lg">
         Skip to main content
@@ -433,9 +433,9 @@ export default function ProtonScheduler() {
           <div className="text-center py-20">
             <h2 className="font-serif text-xl font-semibold mb-4" style={{ color: 'var(--color-text-primary)' }}>Support</h2>
             <p className="text-sm mb-4" style={{ color: 'var(--theme-text-muted)' }}>
-              ProtonScheduler is open-source software.
+              SolidScheduler is open-source software.
             </p>
-            <a href="https://github.com/zerolimit-es/proton-scheduler/issues" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary-light)] no-underline text-sm">
+            <a href="https://github.com/zerolimit-es/solid-scheduler/issues" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary-light)] no-underline text-sm">
               Report an issue on GitHub →
             </a>
           </div>

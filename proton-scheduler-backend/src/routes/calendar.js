@@ -7,6 +7,7 @@
  * Calendar events ("blocked time"): time the organizer is busy. Events block
  * the booking slots they overlap and appear in the calendar feed.
  * GET    /api/calendar/events?from=YYYY-MM-DD&to=YYYY-MM-DD
+ *        (without from and to: today to 90 days ahead, in the organizer's timezone)
  * POST   /api/calendar/events
  * PUT    /api/calendar/events/:id
  * DELETE /api/calendar/events/:id
@@ -42,7 +43,7 @@ import { getDb } from '../cloud/models/database.js';
 import { syncCalendarEventsToPod } from '../cloud/services/pod-sync.js';
 import solidService from '../services/solid.js';
 import { parseICSCalendar } from '../utils/ics.js';
-import { parseRRule } from '../utils/rrule.js';
+import { parseRRule, expandRRule } from '../utils/rrule.js';
 import { parseNaive, addDays, naiveDiffMinutes, instantToNaive } from '../utils/tz.js';
 
 const router = Router();
@@ -181,8 +182,37 @@ async function userPodUrl(req, fetch) {
   return pods[0] || null;
 }
 
+const DEFAULT_RANGE_DAYS = 90;
+
+/**
+ * The next occurrence of a repeating event, from now on, as naive local times;
+ * null when the series has ended.
+ */
+function nextOccurrence(row, timezone) {
+  const minutes = naiveDiffMinutes(row.start_time, row.end_time);
+  if (!(minutes > 0)) return null;
+  const now = instantToNaive(new Date(), timezone);
+  // An occurrence that started earlier and is still running counts as the next one
+  const from = instantToNaive(new Date(Date.now() - minutes * 60000), timezone);
+  const horizon = `${Number(now.slice(0, 4)) + 10}${now.slice(4)}`;
+  const [first] = expandRRule(row.recurrence, row.start_time, from, horizon)
+    .map((occ) => {
+      const pad = (n) => String(n).padStart(2, '0');
+      const naive = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      return { start: naive(occ), end: naive(new Date(occ.getTime() + minutes * 60000)) };
+    })
+    .filter((occ) => occ.end > now);
+  return first || null;
+}
+
 router.get('/events', publicReadLimiter, requireAuth(), requireTenant, (req, res) => {
-  const { from, to } = req.query;
+  const timezone = organizerTimezone(req.tenant);
+  let { from, to } = req.query;
+  if (from === undefined && to === undefined) {
+    // "Upcoming" is judged on the organizer's calendar, not the browser's
+    from = instantToNaive(new Date(), timezone).slice(0, 10);
+    to = addDays(from, DEFAULT_RANGE_DAYS);
+  }
   if (!DATE.test(from || '') || !DATE.test(to || '') || to < from) {
     return res.status(400).json({ error: 'from and to must be dates (YYYY-MM-DD), with to on or after from' });
   }
@@ -191,7 +221,13 @@ router.get('/events', publicReadLimiter, requireAuth(), requireTenant, (req, res
   }
   try {
     const rows = getCalendarEventsInRange(req.tenant.id, `${from} 00:00`, `${addDays(to, 1)} 00:00`);
-    res.json({ timezone: organizerTimezone(req.tenant), events: rows.map(toApi) });
+    const events = rows.map((row) => {
+      const event = toApi(row);
+      // A repeating event's start is when the series began; also say when it next happens
+      if (row.recurrence) event.next = nextOccurrence(row, timezone);
+      return event;
+    });
+    res.json({ timezone, from, to, events });
   } catch (err) {
     console.error('[Calendar] List events error:', err.message);
     res.status(500).json({ error: 'Failed to load calendar events' });

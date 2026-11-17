@@ -231,3 +231,47 @@ describe('blocked time (#75)', () => {
     assert.equal(res.status, 403);
   });
 });
+
+describe('the blocked-time list without a range', () => {
+  let carol;
+  const CAROL = 'https://carol.solidcommunity.net/profile/card#me';
+  before(async () => {
+    carol = await client(CAROL);
+    await carol.get('/api/calendar/feed-token'); // creates the account
+  });
+
+  it("covers today to 90 days ahead in the organizer's timezone", async () => {
+    const { status, body } = await carol.get('/api/calendar/events');
+    assert.equal(status, 200);
+    const { instantToNaive, addDays } = await import('../utils/tz.js');
+    const today = instantToNaive(new Date(), body.timezone).slice(0, 10);
+    assert.equal(body.from, today);
+    assert.equal(body.to, addDays(today, 90));
+  });
+
+  it('gives a repeating block its next occurrence, and none once the series has ended', async () => {
+    // Every day at 12:00 since 2020: next occurrence is today or tomorrow
+    const daily = await carol.post('/api/calendar/events', {
+      json: { title: 'Lunch', start: '2020-01-06 12:00', end: '2020-01-06 13:00', recurrence: 'FREQ=DAILY' },
+    });
+    assert.equal(daily.status, 201, JSON.stringify(daily.body));
+    // Three days in 2020, long over
+    const ended = await carol.post('/api/calendar/events', {
+      json: { title: 'Old course', start: '2020-01-06 09:00', end: '2020-01-06 10:00', recurrence: 'FREQ=DAILY;COUNT=3' },
+    });
+    assert.equal(ended.status, 201, JSON.stringify(ended.body));
+
+    const { body } = await carol.get('/api/calendar/events');
+    const lunch = body.events.find((e) => e.title === 'Lunch');
+    assert.equal(lunch.start, '2020-01-06 12:00', 'the series start is unchanged');
+    assert.match(lunch.next.start, /^\d{4}-\d{2}-\d{2} 12:00$/);
+    assert.match(lunch.next.end, /^\d{4}-\d{2}-\d{2} 13:00$/);
+    assert.ok(lunch.next.start.slice(0, 10) >= body.from, 'next occurrence is not in the past');
+    assert.equal(body.events.find((e) => e.title === 'Old course').next, null);
+  });
+
+  it('still accepts an explicit range', async () => {
+    assert.equal((await carol.get(`/api/calendar/events?from=${DAY}&to=${DAY}`)).status, 200);
+    assert.equal((await carol.get(`/api/calendar/events?from=${DAY}`)).status, 400, 'from without to');
+  });
+});

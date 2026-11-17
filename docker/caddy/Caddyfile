@@ -1,5 +1,5 @@
 # =============================================================================
-# ProtonScheduler — Caddyfile (HTTPS reverse proxy)
+# SolidScheduler — Caddyfile (HTTPS reverse proxy)
 # =============================================================================
 # Caddy automatically obtains and renews Let's Encrypt certificates.
 # Replace {$DOMAIN} with your domain or set the DOMAIN env var.

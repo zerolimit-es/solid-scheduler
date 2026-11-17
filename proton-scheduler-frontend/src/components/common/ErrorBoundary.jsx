@@ -11,7 +11,7 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('[ProtonScheduler] Uncaught error:', error, errorInfo);
+    console.error('[SolidScheduler] Uncaught error:', error, errorInfo);
   }
 
   render() {
@@ -36,7 +36,7 @@ export default class ErrorBoundary extends React.Component {
               Something went wrong
             </h1>
             <p style={{ color: 'rgba(148,163,184,0.70)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-              ProtonScheduler encountered an unexpected error. Your data is safe.
+              SolidScheduler encountered an unexpected error. Your data is safe.
             </p>
             <button
               onClick={() => window.location.reload()}
@@ -46,7 +46,7 @@ export default class ErrorBoundary extends React.Component {
                 color: 'white', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer',
               }}
             >
-              Reload ProtonScheduler
+              Reload SolidScheduler
             </button>
           </div>
         </div>

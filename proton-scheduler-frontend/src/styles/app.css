@@ -25,7 +25,7 @@
 @layer components {
 
   /* ── App Shell ──────────────────────────────────────────────────── */
-  .proton-scheduler {
+  .solid-scheduler {
     min-height: 100vh;
     position: relative;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -33,7 +33,7 @@
     color: var(--theme-text-body);
   }
 
-  .proton-scheduler::before {
+  .solid-scheduler::before {
     content: '';
     position: absolute;
     inset: 0;

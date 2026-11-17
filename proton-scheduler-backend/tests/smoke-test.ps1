@@ -105,7 +105,7 @@ function Check-Header {
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════════"
-Write-Host "  ProtonScheduler Smoke Tests"
+Write-Host "  SolidScheduler Smoke Tests"
 Write-Host "  Target: $BaseUrl"
 Write-Host "  Time:   $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')) UTC"
 Write-Host "═══════════════════════════════════════════════════════════════"
@@ -123,7 +123,7 @@ Write-Host ""
 # 2. API Info
 Write-Host "API Info"
 Check "GET /api returns 200" 200 "$BaseUrl/api"
-Check-Contains "API name present" "ProtonScheduler" "$BaseUrl/api"
+Check-Contains "API name present" "SolidScheduler" "$BaseUrl/api"
 Write-Host ""
 
 # 3. Auth Endpoints

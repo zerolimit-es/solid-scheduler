@@ -37,6 +37,13 @@ function describeRecurrence(rrule) {
 }
 
 function describeWhen(ev) {
+  // A repeating event: its next occurrence (the event's own start is when the series began)
+  const when = ev.recurrence && ev.next ? ev.next : ev;
+  const prefix = when === ev ? '' : 'Next: ';
+  return prefix + describeSpan({ ...when, allDay: ev.allDay });
+}
+
+function describeSpan(ev) {
   const [startDate, startTime] = ev.start.split(' ');
   const [endDate, endTime] = ev.end.split(' ');
   if (ev.allDay) {
@@ -80,14 +87,23 @@ export default function BlockedTimeCard() {
   const [form, setForm] = React.useState(() => ({
     title: '', date: todayISO(), allDay: false, start: '09:00', end: '10:00', repeat: 'none',
   }));
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+  // Until the user picks a date, the form follows the organizer's today
+  const dateTouched = React.useRef(false);
+  const set = (key) => (e) => {
+    if (key === 'date') dateTouched.current = true;
+    setForm((f) => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+  };
+  // A timed block whose end is not after its start runs past midnight
+  const overnight = !form.allDay && form.end <= form.start;
 
   const load = React.useCallback(async () => {
     try {
-      const from = todayISO();
-      const data = await api.calendar.getEvents(from, plusDays(from, UPCOMING_DAYS));
-      setEvents(data.events || []);
+      // The server picks the range: today in the organizer's timezone, not the browser's
+      const data = await api.calendar.getEvents();
+      // A repeating block with no occurrence left is over
+      setEvents((data.events || []).filter((ev) => !ev.recurrence || ev.next));
       setTimezone(data.timezone || null);
+      if (data.from && !dateTouched.current) setForm((f) => ({ ...f, date: data.from }));
     } catch (err) {
       setError(`Could not load blocked time: ${err.message}`);
     } finally {
@@ -110,7 +126,12 @@ export default function BlockedTimeCard() {
     }[form.repeat];
     const body = form.allDay
       ? { title: form.title, allDay: true, start: form.date, end: form.date, recurrence }
-      : { title: form.title, start: `${form.date} ${form.start}`, end: `${form.date} ${form.end}`, recurrence };
+      : {
+        title: form.title,
+        start: `${form.date} ${form.start}`,
+        end: `${overnight ? plusDays(form.date, 1) : form.date} ${form.end}`,
+        recurrence,
+      };
     setBusy(true);
     try {
       await api.calendar.createEvent(body);
@@ -216,7 +237,12 @@ export default function BlockedTimeCard() {
             <>
               <input className={inputClass} type="time" value={form.start} onChange={set('start')} required aria-label="Start time" />
               <span className="text-[var(--theme-text-muted)]">to</span>
-              <input className={inputClass} type="time" value={form.end} onChange={set('end')} required aria-label="End time" />
+              <input className={inputClass} type="time" value={form.end} onChange={set('end')} required aria-label="End time" aria-describedby={overnight ? 'blocked-overnight' : undefined} />
+              {overnight && (
+                <span id="blocked-overnight" className="text-xs text-[var(--theme-text-muted)]">
+                  {form.end === form.start ? '(24 hours)' : '(ends the next day)'}
+                </span>
+              )}
             </>
           )}
           <select className={inputClass} value={form.repeat} onChange={set('repeat')} aria-label="Repeat">
