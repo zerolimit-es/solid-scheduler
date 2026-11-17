@@ -6,6 +6,8 @@
  */
 
 import { createAuthRouter } from '@zerolimit/packages/solid-auth/express';
+import { verifyWebIdIssuer } from '@zerolimit/packages/solid-auth/core';
+import { hostPolicy } from '../services/host-policy.js';
 import { sessionManager, solidFetchMap } from '../middleware/auth.js';
 import { syncBookingsToPod, syncCancellationsToPod, syncCalendarEventsToPod, importPodEventsToSQLite } from '../cloud/services/pod-sync.js';
 import { getAvailability as getLocalAvailability } from '../cloud/models/bookings-db.js';
@@ -100,13 +102,37 @@ const router = createAuthRouter({
     revokeSession(req);
   },
 
-  // ── Before login redirect: remember which IDP was chosen ────────────────
+  // ── WebID check: read the profile only from a public address ────────────
+  // The WebID comes from the identity provider's token, which the user may
+  // control, so its host is checked before the server fetches the profile.
+  verifyIssuer: async (webId, issuer) => {
+    const check = await hostPolicy.check(webId);
+    if (!check.ok) return { ok: false, reason: `WebID host refused: ${check.reason}` };
+    return verifyWebIdIssuer(webId, issuer, { fetch: hostPolicy.guardFetch(globalThis.fetch) });
+  },
+
+  // ── Before login redirect: check and remember which IDP was chosen ──────
+  // Any provider URL can be typed in, and the server contacts it, so it
+  // must be on a public address (or be the operator's configured default).
+  // Throwing here sends the user back with "provider could not be reached".
   onLogin: async (req, { oidcIssuer }) => {
+    const check = await hostPolicy.check(oidcIssuer);
+    if (!check.ok) {
+      delete req.session.oidcIssuer;
+      throw new Error(`Identity provider refused: ${check.reason}`);
+    }
     req.session.oidcIssuer = oidcIssuer;
   },
 
   // ── After OIDC callback: tenant DB, post-login sync, MFA check ──────────
-  onCallback: async (req, { webId, pods, authenticatedFetch }) => {
+  onCallback: async (req, { webId, pods: listedPods, authenticatedFetch }) => {
+    // Only Pods on addresses the server may contact are used
+    const pods = await hostPolicy.filterAllowed(listedPods);
+    if (pods.length < (listedPods?.length ?? 0)) {
+      console.warn('[Auth] Ignored', listedPods.length - pods.length, 'Pod URL(s) on a non-public address');
+    }
+    req.session.podUrl = pods[0] || null;
+
     // The auth router has already checked that the WebID's profile names
     // this issuer as its solid:oidcIssuer (and rejected the login otherwise)
     // before calling this hook, so `webId` can be trusted here.

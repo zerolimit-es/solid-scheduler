@@ -12,7 +12,7 @@ import lusca from 'lusca';
 import cookieSession from 'cookie-session';
 import config from './config/index.js';
 import { solidSessionMiddleware, requireAuth, sessionManager } from './middleware/auth.js';
-import { checkPublicUrl } from './utils/public-host.js';
+import { hostPolicy } from './services/host-policy.js';
 import { enforceSessionLifetime } from './middleware/sessionLifetime.js';
 import { loadTenant } from './cloud/middleware/tenant.js';
 import { verifyEmailConfig } from './services/email.js';
@@ -237,10 +237,9 @@ app.use('/api/auth/passkey', passkeyRoutes);
 // passkey check is pending), and only to a host on the public internet, since
 // the server will send this user's Pod requests there.
 app.put('/api/auth/pod-url', requireAuth(), async (req, res, next) => {
-  if (config.allowPrivatePodHosts) return next();
   const podUrl = req.body?.podUrl;
   if (typeof podUrl !== 'string') return next(); // the router answers with its own error
-  const check = await checkPublicUrl(podUrl);
+  const check = await hostPolicy.check(podUrl);
   if (!check.ok) {
     console.warn('[Auth] Rejected Pod URL:', check.reason);
     return res.status(400).json({ error: 'This Pod URL cannot be used: its host is not reachable on the public internet.' });

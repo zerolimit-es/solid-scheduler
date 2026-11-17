@@ -10,10 +10,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import dns from 'node:dns/promises';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'solid-scheduler-dashboard-'));
 process.env.DB_PATH = path.join(tmpDir, 'test.db');
 delete process.env.DB_ENCRYPTION_KEY;
+
+// The hosts below are stand-ins and the tests make no real requests. The
+// server only contacts public addresses, so have every name resolve to one.
+dns.lookup = async () => [{ address: '93.184.216.34', family: 4 }];
 
 const WEBID = 'https://uma.solidcommunity.net/profile/card#me';
 const POD = 'https://uma.solidcommunity.net/';

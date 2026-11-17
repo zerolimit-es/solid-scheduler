@@ -23,9 +23,10 @@ import {
   addExcludedDate,
   updateRecurringSeries,
   setupPublicBookingPage as _setupPublicBookingPage,
-  getUserPods,
+  getUserPods as _getUserPods,
   checkSlotConflict as _checkSlotConflict,
 } from '@zerolimit/packages/solid-pod-sync/core';
+import { hostPolicy } from './host-policy.js';
 
 // Inrupt SDK — for calendar event operations
 import {
@@ -105,7 +106,15 @@ export async function markConfirmationSent(bookingUrl, fetch) {
 }
 
 // Re-export functions that don't need path config
-export { cancelBooking, deleteBooking, addExcludedDate, updateRecurringSeries, getUserPods };
+export { cancelBooking, deleteBooking, addExcludedDate, updateRecurringSeries };
+
+/**
+ * The user's Pods as their WebID profile lists them, without any on an
+ * address the server may not contact (see services/host-policy.js).
+ */
+export async function getUserPods(webId, fetch) {
+  return hostPolicy.filterAllowed(await _getUserPods(webId, fetch));
+}
 
 // =============================================================================
 // Calendar Events — Pod operations
