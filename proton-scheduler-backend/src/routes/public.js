@@ -21,20 +21,12 @@ import {
   sendVisitorConfirmation,
   sendOrganizerNotification,
 } from '../cloud/services/email.js';
-import { getTenantBySlug, getUsage, incrementUsage, getDb, getBranding } from '../cloud/models/database.js';
-import { checkLimit } from '../cloud/config/tiers.js';
+import { getTenantBySlug } from '../cloud/models/database.js';
 import { isValidTimeZone, instantToNaive, parseNaive } from '../utils/tz.js';
 import { organizerIdentity } from '../utils/organizer.js';
 import { buildVTimezone } from '../utils/vtimezone.js';
 import { escapeICSText } from '../utils/ics.js';
 import config from '../config/index.js';
-import {
-  listActiveTeamMembers,
-  getTeamMember,
-  pickRoundRobinMember,
-  incrementRoundRobinCount,
-  getCollectiveSlots,
-} from '../cloud/models/team-db.js';
 
 const router = Router();
 
@@ -122,23 +114,19 @@ function dayWindow(avail, date) {
 
 /**
  * Start times (minutes since midnight) offered on `date`: every `duration`
- * minutes within working hours, or the team's common slots in collective
- * mode. Nothing on past days; today only from MIN_NOTICE_MINUTES ahead.
+ * minutes within working hours. Nothing on past days; today only from
+ * MIN_NOTICE_MINUTES ahead.
  */
-function slotStarts(organizer, slug, date, { avail, duration, tz }) {
+function slotStarts(date, { avail, duration, tz }) {
   const now = instantToNaive(new Date(), tz);
   const today = now.slice(0, 10);
   if (date < today) return [];
   const earliest = date === today ? toMinutes(now.slice(11)) + MIN_NOTICE_MINUTES : -1;
 
-  let starts = [];
-  if (organizer?.scheduling_mode === 'collective') {
-    starts = getCollectiveSlots(organizer.id, date, slug, duration).map((s) => toMinutes(s.time));
-  } else {
-    const hours = dayWindow(avail, date);
-    if (hours) {
-      for (let m = hours.start; m + duration <= hours.end; m += duration) starts.push(m);
-    }
+  const starts = [];
+  const hours = dayWindow(avail, date);
+  if (hours) {
+    for (let m = hours.start; m + duration <= hours.end; m += duration) starts.push(m);
   }
   return starts.filter((m) => m !== null && m > earliest);
 }
@@ -180,24 +168,6 @@ router.get('/:slug', publicReadLimiter, (req, res) => {
   });
 });
 
-// GET /api/public/:slug/team - public team info for booking page
-router.get('/:slug/team', publicReadLimiter, (req, res) => {
-  const { slug } = req.params;
-  const organizer = getTenantBySlug(slug);
-  if (!organizer || (organizer.scheduling_mode || 'none') === 'none') {
-    return res.json({ teamScheduling: false, members: [], schedulingMode: 'none' });
-  }
-  const members = listActiveTeamMembers(organizer.id).map(m => ({
-    id: m.id,
-    name: m.name,
-  }));
-  res.json({
-    teamScheduling: true,
-    schedulingMode: organizer.scheduling_mode,
-    members,
-  });
-});
-
 // GET /api/public/:slug/availability - public availability for calendar
 router.get('/:slug/availability', publicReadLimiter, (req, res) => {
   try {
@@ -231,7 +201,7 @@ router.get('/:slug/slots', publicReadLimiter, (req, res) => {
     const calBlocked = organizer?.id ? getBlockedIntervals(organizer.id, date) : [];
 
     // A slot is taken when any booking or blocked time overlaps it
-    const slots = slotStarts(organizer, slug, date, settings).map((m) => ({
+    const slots = slotStarts(date, settings).map((m) => ({
       time: toTime(m),
       displayTime: toDisplayTime(m),
       isBooked: isBlocked(booked, m, m + duration) || isBlocked(calBlocked, m, m + duration),
@@ -247,7 +217,7 @@ router.get('/:slug/slots', publicReadLimiter, (req, res) => {
 router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async (req, res) => {
   try {
     const { slug } = req.params;
-    const { date, time, name, email, notes, teamMemberId } = req.body;
+    const { date, time, name, email, notes } = req.body;
 
     if (!date || !time || !name || !email) {
       return res.status(400).json({ error: 'Missing required fields: date, time, name, email' });
@@ -262,42 +232,6 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
       return res.status(404).json({ error: 'Booking page not found' });
     }
 
-    if (organizer) {
-      const currentUsage = getUsage(organizer.id, 'bookingsPerMonth');
-      const check = checkLimit(organizer.tier, 'bookingsPerMonth', currentUsage);
-      if (!check.allowed) {
-        return res.status(429).json({
-          error: 'limit_reached',
-          message: `This booking page has reached its monthly limit. Please try again next month or contact the organizer.`,
-          limit: check.limit,
-          current: check.current,
-        });
-      }
-    }
-
-    // --- Team assignment logic ---
-    let assignedMember = null;
-    const schedulingMode = organizer?.scheduling_mode || 'none';
-
-    if (schedulingMode !== 'none' && organizer) {
-      if (schedulingMode === 'round_robin') {
-        assignedMember = pickRoundRobinMember(organizer.id);
-        if (!assignedMember) {
-          return res.status(503).json({ error: 'No team members available for this booking' });
-        }
-      } else if (schedulingMode === 'managed') {
-        if (!teamMemberId) {
-          return res.status(400).json({ error: 'teamMemberId is required for managed scheduling' });
-        }
-        const member = getTeamMember(teamMemberId);
-        if (!member || member.tenant_id !== organizer.id || !member.active) {
-          return res.status(400).json({ error: 'Invalid or inactive team member' });
-        }
-        assignedMember = member;
-      }
-      // collective mode: all members attend, no single assignment
-    }
-
     // The time must be one the page offers: a real date, not in the past,
     // inside working hours and on the slot grid (the slot list only shows
     // these, but a client can post anything).
@@ -310,7 +244,7 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
     if (date < instantToNaive(new Date(), tz).slice(0, 10)) {
       return res.status(400).json({ error: 'This date is in the past' });
     }
-    if (startMin === null || !slotStarts(organizer, slug, date, settings).includes(startMin)) {
+    if (startMin === null || !slotStarts(date, settings).includes(startMin)) {
       return res.status(409).json({ error: 'Time slot unavailable' });
     }
     const endMinTotal = startMin + duration;
@@ -338,9 +272,9 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
 
     // ICS — use TZID so Proton Mail doesn't warn "Floating times not supported"
     const bookingAvail = settings.avail;
-    // Who the meeting is with: the assigned team member, or the account's own name
+    // Who the meeting is with: the account's own name
     const host = organizerIdentity(bookingAvail);
-    const meetingWith = assignedMember?.name || host.name;
+    const meetingWith = host.name;
     const startICS = `${year}${month.toString().padStart(2,'0')}${day.toString().padStart(2,'0')}T${hour.toString().padStart(2,'0')}${minute.toString().padStart(2,'0')}00`;
     const endICS = `${year}${month.toString().padStart(2,'0')}${day.toString().padStart(2,'0')}T${endH.toString().padStart(2,'0')}${endM.toString().padStart(2,'0')}00`;
     const nowICS = fmtNowUTC();
@@ -397,22 +331,9 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
       attendeeEmail: email,
       notes: notes || '',
       icsContent,
-      assignedMemberId: assignedMember?.id || null,
-      assignedMemberName: assignedMember?.name || null,
-      assignedMemberEmail: assignedMember?.email || null,
     };
 
-    const bookAndCount = getDb().transaction((payload, organizerId, member, mode) => {
-      createBooking(payload);
-      if (organizerId) {
-        incrementUsage(organizerId, 'bookingsPerMonth');
-      }
-      if (mode === 'round_robin' && member) {
-        incrementRoundRobinCount(member.id);
-      }
-    });
-
-    bookAndCount(bookingPayload, organizer?.id, assignedMember, schedulingMode);
+    createBooking(bookingPayload);
 
     // Copy to the operator's CalDAV calendar (background; only for CALDAV_BOOKING_SLUG)
     caldav().bookingCreated(slug, {
@@ -434,7 +355,6 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
       endTime: endDisplay,
       duration,
       attendee: { name, email },
-      assignedMember: assignedMember ? { id: assignedMember.id, name: assignedMember.name, email: assignedMember.email } : null,
       notes: notes || '',
       location: 'Video Call',
     };
@@ -442,13 +362,12 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
     // Get organizer email from availability settings (bookingAvail fetched above for ICS timezone)
     const orgEmail = host.email;
 
-    // Send branded emails (non-blocking)
-    const tenantBranding = organizer?.id ? getBranding(organizer.id) : null;
+    // Send emails (non-blocking)
     Promise.all([
-      sendVisitorConfirmation({ booking: bookingData, icsContent, branding: tenantBranding }).catch(err => {
+      sendVisitorConfirmation({ booking: bookingData, icsContent }).catch(err => {
         console.error('[Email] ✗ Visitor email failed:', err.message);
       }),
-      sendOrganizerNotification({ booking: bookingData, icsContent, organizerEmail: orgEmail, branding: tenantBranding }).catch(err => {
+      sendOrganizerNotification({ booking: bookingData, icsContent, organizerEmail: orgEmail }).catch(err => {
         console.error('[Email] ✗ Organizer email failed:', err.message);
       }),
     ]);
@@ -505,18 +424,7 @@ router.get('/:slug/ics/:id', publicReadLimiter, (req, res) => {
 // booking so IDs can't be replayed across booking pages.
 router.delete('/:slug/bookings/:id', bookingLimiter, (req, res) => {
   try {
-    // Check organizer's tier allows cancellation
-    const tenant = getTenantBySlug(req.params.slug);
-    if (tenant) {
-      const result = checkLimit(tenant.tier, 'cancelBooking');
-      if (!result.allowed) {
-        return res.status(403).json({
-          error: 'upgrade_required',
-          message: 'Booking cancellation requires a Pro plan or higher.',
-          feature: 'cancelBooking',
-        });
-      }
-    }
+    const tenant = req.organizer;
     const booking = getBookingById(req.params.id);
     if (!booking || booking.slug !== req.params.slug) {
       return res.status(404).json({ error: 'Booking not found' });

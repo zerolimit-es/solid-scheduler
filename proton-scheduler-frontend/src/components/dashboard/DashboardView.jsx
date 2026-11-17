@@ -1,5 +1,5 @@
 import React from 'react';
-import { apiFetch } from '../../services/api';
+import { api, apiFetch } from '../../services/api';
 import { CalendarIcon, ClockIcon, LinkIcon, CheckIcon, LoaderIcon, DownloadIcon, CancelIcon } from '../common/Icons';
 import { AlertTriangle, Check } from 'lucide-react';
 import CalendarFeedCard from './CalendarFeedCard';
@@ -248,7 +248,7 @@ export default function DashboardView({
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <a className="p-2 text-[var(--theme-text-muted)] transition-colors duration-200" href={"/api/public/" + slug + "/ics/" + booking.id} title="Download .ics">
+                    <a className="p-2 text-[var(--theme-text-muted)] transition-colors duration-200" href={api.bookings.getIcsUrl(booking.id)} title="Download .ics">
                       <DownloadIcon style={{ width: 18, height: 18 }} />
                     </a>
                     <button

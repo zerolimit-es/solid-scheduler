@@ -229,7 +229,7 @@ describe('anonymous visitors are not given a cookie', () => {
 describe('a booking link no account holds', () => {
   it('answers 404 on every public route, so the page can say so', async () => {
     for (const urlPath of ['/api/public/nobody-here', '/api/public/nobody-here/availability',
-      '/api/public/nobody-here/slots?date=2030-09-16', '/api/public/nobody-here/team', '/api/public/nobody-here/bookings']) {
+      '/api/public/nobody-here/slots?date=2030-09-16', '/api/public/nobody-here/bookings']) {
       const res = await fetch(`${baseUrl}${urlPath}`);
       assert.equal(res.status, 404, urlPath);
       assert.equal((await res.json()).error, 'Booking page not found');
@@ -243,5 +243,15 @@ describe('a booking link no account holds', () => {
     assert.equal(body.profile.name, 'Pia Petit');
     assert.equal(body.stats, undefined);
     assert.equal((await (await fetch(`${baseUrl}/api/public/pia/bookings`)).json()).stats, undefined);
+  });
+});
+
+describe('hosted-edition features are gone', () => {
+  it('has no team route and no API-key sign-in', async () => {
+    assert.equal((await fetch(`${baseUrl}/api/public/pia/team`)).status, 404);
+    // A bearer API key is not a way in: it is ignored, so the request is anonymous
+    const res = await fetch(`${baseUrl}/api/bookings`, { headers: { Authorization: 'Bearer ps_live_0123456789abcdef' } });
+    assert.equal(res.status, 401);
+    assert.equal((await res.json()).error, 'Unauthorized');
   });
 });

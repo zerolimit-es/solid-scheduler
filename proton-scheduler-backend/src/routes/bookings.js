@@ -24,9 +24,6 @@ import calendarService from '../services/calendar.js';
 import { generateICS } from '../utils/ics.js';
 import { SCHEMA } from '../utils/rdf.js';
 import { describeRecurrence, buildRRule, parseRRule } from '../utils/recurrence.js';
-import { checkLimit } from '../cloud/config/tiers.js';
-import { requireFeature } from '../cloud/middleware/tierEnforcement.js';
-import { getUsage, incrementUsage, getDb } from '../cloud/models/database.js';
 import {
   createBooking as createBookingInDb,
   getBookingsBySlug,
@@ -269,29 +266,10 @@ router.get('/expanded', requireAuth(), async (req, res) => {
 
 /**
  * POST /api/bookings
- * Create a new booking — enforces bookingsPerMonth tier limit
+ * Create a new booking
  */
 router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
   try {
-    // -------------------------------------------------------------------------
-    // Tier enforcement: bookingsPerMonth
-    // req.tenant is populated by loadTenant() in the cloud layer (integrate.js)
-    // -------------------------------------------------------------------------
-    if (req.tenant) {
-      const currentUsage = getUsage(req.tenant.id, 'bookingsPerMonth');
-      const check = checkLimit(req.tenant.tier, 'bookingsPerMonth', currentUsage);
-      if (!check.allowed) {
-        return res.status(429).json({
-          error: 'limit_reached',
-          message: `You've reached your ${req.tenant.tier} plan limit of ${check.limit} bookings per month.`,
-          limit: check.limit,
-          current: check.current,
-          currentTier: req.tenant.tier,
-          resetInfo: 'Limits reset at the start of each calendar month.',
-        });
-      }
-    }
-
     let { start, end, attendee, notes, location, recurrence } = req.body;
 
     // The account's timezone and meeting length, same as its public booking page
@@ -399,10 +377,6 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
         { location }
       );
 
-      if (req.tenant) {
-        incrementUsage(req.tenant.id, 'bookingsPerMonth');
-      }
-
       // Keep a local record: the public booking page and the calendar feed
       // read SQLite, not the Pod, and must see this time as taken, on every
       // occurrence if the booking repeats.
@@ -495,14 +469,7 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
       recurrence: recurrence ? buildRRule(recurrence) : null,
     };
 
-    const bookAndCount = getDb().transaction((payload, tenantId) => {
-      createBookingInDb(payload);
-      if (tenantId) {
-        incrementUsage(tenantId, 'bookingsPerMonth');
-      }
-    });
-
-    bookAndCount(bookingPayload, req.tenant?.id);
+    createBookingInDb(bookingPayload);
 
     caldav().bookingCreated(slug, {
       id: bookingId,
@@ -825,7 +792,7 @@ router.put('/:id', requireAuth(), async (req, res) => {
 /**
  * DELETE /api/bookings/:id
  */
-router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req, res) => {
+router.delete('/:id', requireAuth(), async (req, res) => {
   try {
     const { id } = req.params;
     const { reason, notify = true, scope = 'all', occurrenceDate } = req.body || {};
@@ -937,16 +904,35 @@ router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req
 
 /**
  * GET /api/bookings/:id/ics
+ *
+ * The signed-in organizer's calendar file for one of their bookings, from
+ * the Pod, or from the local copy when the booking has not reached the Pod
+ * yet or there is no Pod session.
  */
 router.get('/:id/ics', requireAuth(), async (req, res) => {
   try {
     const { id } = req.params;
-    const fetch = await getAuthenticatedFetch(req.solidSession);
-    const podUrl = selectPod(req.query.pod, await ownPods(req, fetch));
-    if (!podUrl) return res.status(503).json(NO_POD);
+    const slug = req.tenant?.booking_slug;
+    const timezone = accountTimezone(slug);
 
-    const bookings = await solidService.loadBookings(podUrl, fetch);
-    const booking = bookings.find(b => b.id === id);
+    let fetch;
+    try {
+      fetch = await getAuthenticatedFetch(req.solidSession);
+    } catch {
+      fetch = null;
+    }
+
+    let booking = null;
+    const podUrl = fetch ? selectPod(req.query.pod, await ownPods(req, fetch)) : null;
+    if (podUrl) {
+      await pushPendingToPod(req, podUrl, fetch);
+      booking = (await solidService.loadBookings(podUrl, fetch, { includeCancelled: true })).find(b => b.id === id) || null;
+    }
+    if (!booking) {
+      // This account's own local copy only
+      const row = slug ? getBookingById(id) : null;
+      if (row && row.slug === slug) booking = localRowToBooking(row, timezone);
+    }
 
     if (!booking) {
       return res.status(404).json({
@@ -966,9 +952,11 @@ router.get('/:id/ics', requireAuth(), async (req, res) => {
       uid: booking.id,
       recurrence: booking.recurrence,
       excludedDates: booking.excludedDates,
+      status: booking.status === SCHEMA.EventCancelled ? 'CANCELLED' : 'CONFIRMED',
+      timezone,
     });
 
-    const filename = `${booking.title.replace(/[^a-z0-9]/gi, '-')}.ics`;
+    const filename = `${String(booking.title || 'meeting').replace(/[^a-z0-9]/gi, '-').slice(0, 80) || 'meeting'}.ics`;
 
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

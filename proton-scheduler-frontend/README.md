@@ -45,8 +45,7 @@ proton-scheduler-frontend/
 │   │   ├── tailwind.css           # Tailwind v4 theme
 │   │   └── app.css                # Component styles
 │   ├── utils/
-│   │   ├── webid.js               # WebID parsing
-│   │   └── branding.js            # CSS variable application
+│   │   └── webid.js               # WebID parsing
 │   └── components/
 │       ├── booking/               # BookingView, BookingForm, ConfirmationView
 │       ├── common/                # Icons, PasskeyChallenge, TimezoneSearch

@@ -14,7 +14,7 @@ import config from './config/index.js';
 import { solidSessionMiddleware, requireAuth, sessionManager } from './middleware/auth.js';
 import { checkPublicUrl } from './utils/public-host.js';
 import { enforceSessionLifetime } from './middleware/sessionLifetime.js';
-import { loadTenant } from './cloud/middleware/tierEnforcement.js';
+import { loadTenant } from './cloud/middleware/tenant.js';
 import { verifyEmailConfig } from './services/email.js';
 import { closeRedis } from './services/redis.js';
 

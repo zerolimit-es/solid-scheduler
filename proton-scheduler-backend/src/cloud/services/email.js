@@ -28,8 +28,8 @@ const transporter = nodemailer.createTransport({
 const FROM = `"${config.email.fromName}" <${config.email.from}>`;
 const ORGANIZER_EMAIL = config.organizer.email;
 
-/** SolidScheduler defaults — used when tenant has no custom branding. */
-const PROTON = {
+/** Email colours. */
+const COLORS = {
   primary: '#6366F1',
   accent: '#6366F1',
   bg: '#0F172A',
@@ -43,70 +43,12 @@ const PROTON = {
   cancel: '#dc2626',
 };
 
-/** Resolve tenant branding to email-safe colors with SolidScheduler fallbacks. */
-function resolveColors(branding) {
-  if (!branding) return PROTON;
-  return {
-    primary: branding.primary_color || PROTON.primary,
-    accent: branding.accent_color || PROTON.accent,
-    bg: branding.background_color || PROTON.bg,
-    card: branding.background_color ? lightenHex(branding.background_color, 0.06) : PROTON.card,
-    border: branding.background_color ? lightenHex(branding.background_color, 0.12) : PROTON.borderSolid,
-    borderSolid: branding.background_color ? lightenHex(branding.background_color, 0.12) : PROTON.borderSolid,
-    textPrimary: branding.text_color || PROTON.textPrimary,
-    textSecondary: branding.text_color ? fadeHex(branding.text_color, 0.85) : PROTON.textSecondary,
-    textMuted: branding.text_color ? fadeHex(branding.text_color, 0.6) : PROTON.textMuted,
-    textFooter: branding.text_color ? fadeHex(branding.text_color, 0.4) : PROTON.textFooter,
-    cancel: PROTON.cancel,
-    companyName: branding.company_name || null,
-    logoUrl: branding.logo_url || null,
-    hideBadge: !!branding.hide_proton_badge,
-  };
-}
-
-/** Lighten a hex color by mixing with white. factor 0-1, 0=original, 1=white. */
-function lightenHex(hex, factor) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const lr = Math.round(r + (255 - r) * factor);
-  const lg = Math.round(g + (255 - g) * factor);
-  const lb = Math.round(b + (255 - b) * factor);
-  return `#${lr.toString(16).padStart(2,'0')}${lg.toString(16).padStart(2,'0')}${lb.toString(16).padStart(2,'0')}`;
-}
-
-/** Fade a hex color toward gray. Returns a hex string at the given intensity. */
-function fadeHex(hex, intensity) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const mid = 128;
-  const fr = Math.round(mid + (r - mid) * intensity);
-  const fg = Math.round(mid + (g - mid) * intensity);
-  const fb = Math.round(mid + (b - mid) * intensity);
-  return `#${fr.toString(16).padStart(2,'0')}${fg.toString(16).padStart(2,'0')}${fb.toString(16).padStart(2,'0')}`;
-}
-
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-/** Render the email header icon — tenant logo or nothing. */
-function headerIcon(c) {
-  // If user has their own logo, always show it
-  if (c.logoUrl) {
-    const alt = c.companyName || 'Logo';
-    return `<img src="${escHtml(c.logoUrl)}" alt="${escHtml(alt)}" width="56" height="56" style="display:block;margin:0 auto 16px;width:56px;height:56px;border-radius:16px;object-fit:cover" />`;
-  }
-  return '';
-}
+const FOOTER_TEXT = 'Scheduled with SolidScheduler · Privacy-first scheduling';
 
-function footerText(c) {
-  if (c.hideBadge && c.companyName) return `Scheduled with ${escHtml(c.companyName)}`;
-  if (c.companyName) return `Scheduled with ${escHtml(c.companyName)} · Powered by SolidScheduler`;
-  return 'Scheduled with SolidScheduler · Privacy-first scheduling';
-}
-
-export async function sendVisitorConfirmation({ booking, icsContent, branding }) {
-  const c = resolveColors(branding);
+export async function sendVisitorConfirmation({ booking, icsContent }) {
+  const c = COLORS;
   const { title, date, startTime, endTime, attendee } = booking;
   const notesRow = booking.notes ? `<tr><td style="color:${c.textMuted};font-size:13px;padding:14px 20px">Notes</td><td style="color:${c.textSecondary};font-size:13px;padding:14px 20px;text-align:right;line-height:1.4">${escHtml(booking.notes)}</td></tr>` : '';
   const whereBottom = booking.notes ? `border-bottom:1px solid ${c.borderSolid};` : '';
@@ -117,9 +59,9 @@ export async function sendVisitorConfirmation({ booking, icsContent, branding })
 <body style="margin:0;padding:0;background:${c.bg};font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased">
   <div style="max-width:520px;margin:0 auto;padding:40px 20px">
     <div style="text-align:center;margin-bottom:32px">
-      ${headerIcon(c)}
+      
       <h1 style="color:${c.textPrimary};font-size:22px;font-weight:700;margin:0 0 4px">Meeting Confirmed</h1>
-      <p style="color:${c.textMuted};font-size:13px;margin:0">${c.companyName ? escHtml(c.companyName) : 'Powered by SolidScheduler'}</p>
+      <p style="color:${c.textMuted};font-size:13px;margin:0">Powered by SolidScheduler</p>
     </div>
     <div style="background:${c.card};border-radius:16px;border:1px solid ${c.border};overflow:hidden">
       <div style="padding:28px 32px">
@@ -140,7 +82,7 @@ export async function sendVisitorConfirmation({ booking, icsContent, branding })
       </div>
     </div>
     <div style="text-align:center;margin-top:32px">
-      <p style="color:${c.textFooter};font-size:11px;margin:0">${footerText(c)}</p>
+      <p style="color:${c.textFooter};font-size:11px;margin:0">${FOOTER_TEXT}</p>
     </div>
   </div>
 </body>
@@ -163,14 +105,14 @@ export async function sendVisitorConfirmation({ booking, icsContent, branding })
   console.log(`[Email] ✓ Visitor confirmation sent to ${attendee.email}`);
 }
 
-export async function sendOrganizerNotification({ booking, icsContent, organizerEmail, branding }) {
+export async function sendOrganizerNotification({ booking, icsContent, organizerEmail }) {
   const recipient = organizerEmail || ORGANIZER_EMAIL;
   if (!recipient) {
     console.log('[Email] ⚠ No ORGANIZER_EMAIL set, skipping organizer notification');
     return;
   }
 
-  const c = resolveColors(branding);
+  const c = COLORS;
   const { date, startTime, endTime, attendee } = booking;
   const notesRow = booking.notes ? `<tr><td style="color:${c.textMuted};font-size:13px;padding:14px 20px">Notes</td><td style="color:${c.textSecondary};font-size:13px;padding:14px 20px;text-align:right;line-height:1.4">${escHtml(booking.notes)}</td></tr>` : '';
   const whereBottom = booking.notes ? `border-bottom:1px solid ${c.borderSolid};` : '';
@@ -181,7 +123,7 @@ export async function sendOrganizerNotification({ booking, icsContent, organizer
 <body style="margin:0;padding:0;background:${c.bg};font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased">
   <div style="max-width:520px;margin:0 auto;padding:40px 20px">
     <div style="text-align:center;margin-bottom:32px">
-      ${headerIcon(c)}
+      
       <h1 style="color:${c.textPrimary};font-size:22px;font-weight:700;margin:0 0 4px">New Booking</h1>
       <p style="color:${c.textMuted};font-size:13px;margin:0">Someone just booked a meeting with you</p>
     </div>
@@ -204,7 +146,7 @@ export async function sendOrganizerNotification({ booking, icsContent, organizer
       </div>
     </div>
     <div style="text-align:center;margin-top:32px">
-      <p style="color:${c.textFooter};font-size:11px;margin:0">${footerText(c)}</p>
+      <p style="color:${c.textFooter};font-size:11px;margin:0">${FOOTER_TEXT}</p>
     </div>
   </div>
 </body>
@@ -227,7 +169,7 @@ export async function sendOrganizerNotification({ booking, icsContent, organizer
 
 export async function sendCancellationNotice(booking, options = {}) {
   const cancelledBy = options.cancelledBy || 'the organizer';
-  const c = resolveColors(options.branding || null);
+  const c = COLORS;
 
   // In the account's timezone, not the server's
   const formatDateTime = (date) =>
@@ -263,7 +205,7 @@ export async function sendCancellationNotice(booking, options = {}) {
 <body style="margin:0;padding:0;background:${c.bg};font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased">
   <div style="max-width:520px;margin:0 auto;padding:40px 20px">
     <div style="text-align:center;margin-bottom:32px">
-      ${headerIcon(c)}
+      
       <h1 style="color:${c.textPrimary};font-size:22px;font-weight:700;margin:0 0 4px">Meeting Cancelled</h1>
       <p style="color:${c.textMuted};font-size:13px;margin:0">Cancelled by ${escHtml(cancelledBy)}</p>
     </div>
@@ -282,7 +224,7 @@ export async function sendCancellationNotice(booking, options = {}) {
       </div>
     </div>
     <div style="text-align:center;margin-top:32px">
-      <p style="color:${c.textFooter};font-size:11px;margin:0">${footerText(c)}</p>
+      <p style="color:${c.textFooter};font-size:11px;margin:0">${FOOTER_TEXT}</p>
     </div>
   </div>
 </body>

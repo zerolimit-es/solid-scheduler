@@ -19,7 +19,7 @@ before(async () => {
   ({ ensureTenant } = await import('../cloud/services/tenants.js'));
   db = await import('../cloud/models/database.js');
   express = (await import('express')).default;
-  ({ loadTenant } = await import('../cloud/middleware/tierEnforcement.js'));
+  ({ loadTenant } = await import('../cloud/middleware/tenant.js'));
   passkeyRoutes = (await import('./passkey.js')).default;
   bookingsRoutes = (await import('./bookings.js')).default;
 
