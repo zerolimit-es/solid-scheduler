@@ -28,7 +28,7 @@ const booking = (over = {}) => ({
   end: new Date('2030-07-15T08:30:00Z'),
   location: 'Room "A" & <i>B</i>',
   notes: '<img src=x onerror=alert(1)> see https://evil.example',
-  organizer: { name: 'Olga <script>', email: 'olga@example.com' },
+  organizer: { name: 'Olga <SCRIPT>', email: 'olga@example.com' },
   attendee: { name: 'Eve <a href="https://evil.example">click</a>', email: 'eve@example.com' },
   timezone: 'Europe/Paris',
   ...over,
@@ -36,17 +36,25 @@ const booking = (over = {}) => ({
 
 const htmlOf = (message) => String(message.html);
 
+/**
+ * The user-supplied markup that must never reach the HTML unescaped. Compared
+ * case-insensitively as plain text, not with a regular expression, so no
+ * spelling of a tag (<SCRIPT>, <Img ...>) slips past the check.
+ */
+const INJECTED = ['<script', '<img', '<a href=', '<b>', '<i>'];
+const injectedIn = (html) => INJECTED.filter((fragment) => html.toLowerCase().includes(fragment));
+
 describe('confirmation emails', () => {
   it('escape names, titles, locations and notes in the HTML', async () => {
     await email.sendBookingConfirmation(booking());
     assert.equal(sent.length, 2, 'attendee and organizer');
     for (const message of sent) {
       const html = htmlOf(message);
-      assert.ok(!/<script>|<img |<a href="https:\/\/evil|<b>Eve<\/b>|<i>B<\/i>/.test(html), 'no injected markup');
+      assert.deepEqual(injectedIn(html), [], 'no injected markup');
       assert.match(html, /Meeting with &lt;b&gt;Eve&lt;\/b&gt;/);
       assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
     }
-    assert.match(htmlOf(sent[0]), /Olga &lt;script&gt;/);
+    assert.match(htmlOf(sent[0]), /Olga &lt;SCRIPT&gt;/);
     assert.match(htmlOf(sent[1]), /Eve &lt;a href=&quot;https:\/\/evil\.example&quot;&gt;click&lt;\/a&gt;/);
   });
 
@@ -69,7 +77,7 @@ describe('cancellation emails', () => {
       { reason: '<b>busy</b>', cancelledBy: 'the organizer', timezone: 'Europe/Paris' });
     assert.ok(sent.length >= 1);
     const html = htmlOf(sent[0]);
-    assert.ok(!/<b>busy<\/b>|<b>Eve<\/b>/.test(html));
+    assert.deepEqual(injectedIn(html), []);
     assert.match(html, /10:00 AM/);
   });
 
