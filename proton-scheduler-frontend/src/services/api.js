@@ -147,7 +147,8 @@ export const api = {
     remove: (id) => apiFetch(`/api/auth/passkey/${id}`, { method: 'DELETE' }),
   },
   calendar: {
-    getEvents: (from, to) => apiFetch(`/api/calendar/events?from=${from}&to=${to}`),
+    // Without a range: today to 90 days ahead, in the organizer's timezone
+    getEvents: (from, to) => apiFetch(from && to ? `/api/calendar/events?from=${from}&to=${to}` : '/api/calendar/events'),
     createEvent: (data) => apiFetch('/api/calendar/events', { method: 'POST', body: JSON.stringify(data) }),
     updateEvent: (id, data) => apiFetch(`/api/calendar/events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteEvent: (id) => apiFetch(`/api/calendar/events/${id}`, { method: 'DELETE' }),
