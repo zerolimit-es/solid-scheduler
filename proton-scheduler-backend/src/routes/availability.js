@@ -5,7 +5,6 @@
  * - GET /api/availability - Get availability settings
  * - PUT /api/availability - Update availability settings
  * - GET /api/availability/slots - Get available time slots
- * - GET /api/availability/dates - Get available dates in a month
  */
 
 import { Router } from 'express';
@@ -13,7 +12,6 @@ import { requireAuth, getAuthenticatedFetch } from '../middleware/auth.js';
 import { getAvailability as getLocalAvailability, saveAvailability as saveLocalAvailability, getBookedSlots } from '../cloud/models/bookings-db.js';
 import { getBlockedIntervals, isBlocked } from '../cloud/models/calendar-events-db.js';
 import solidService from '../services/solid.js';
-import calendarService from '../services/calendar.js';
 import config from '../config/index.js';
 import { checkLimit } from '../cloud/config/tiers.js';
 import { getUsage, changeBookingSlug, SlugTakenError, getTenantBySlug } from '../cloud/models/database.js';
@@ -293,60 +291,6 @@ router.get('/slots', requireAuth(), async (req, res) => {
     console.error('Get slots error:', error);
     res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
       error: 'Failed to get available slots',
-      message: safeMessage(error),
-    });
-  }
-});
-
-/**
- * GET /api/availability/dates
- * Get dates with available slots in a given month
- * Query params:
- *   - year: Year (required)
- *   - month: Month 1-12 (required)
- *   - pod: Pod URL (optional)
- */
-router.get('/dates', requireAuth(), async (req, res) => {
-  try {
-    const { year, month, pod } = req.query;
-    
-    if (!year || !month) {
-      return res.status(400).json({
-        error: 'Missing parameters',
-        message: 'Year and month are required',
-      });
-    }
-    
-    let fetch;
-    try {
-      fetch = await getAuthenticatedFetch(req.solidSession, req.user?.webId || req.session?.webId);
-    } catch {
-      return res.json({ year: parseInt(year), month: parseInt(month), availableDates: [], count: 0, source: 'no-auth' });
-    }
-    const pods = req.user?.pods?.length ? req.user.pods : await solidService.getUserPods(req.user.webId, fetch).catch(() => [req.session?.podUrl].filter(Boolean));
-    const podUrl = selectPod(pod, pods);
-
-    if (!podUrl) {
-      return res.json({ year: parseInt(year), month: parseInt(month), availableDates: [], count: 0, source: 'no-pod' });
-    }
-
-    const dates = await calendarService.getAvailableDatesInMonth(
-      podUrl,
-      parseInt(year),
-      parseInt(month),
-      fetch
-    );
-    
-    res.json({
-      year: parseInt(year),
-      month: parseInt(month),
-      availableDates: dates,
-      count: dates.length,
-    });
-  } catch (error) {
-    console.error('Get dates error:', error);
-    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
-      error: 'Failed to get available dates',
       message: safeMessage(error),
     });
   }

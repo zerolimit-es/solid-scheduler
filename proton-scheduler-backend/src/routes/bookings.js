@@ -937,16 +937,35 @@ router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req
 
 /**
  * GET /api/bookings/:id/ics
+ *
+ * The signed-in organizer's calendar file for one of their bookings, from
+ * the Pod, or from the local copy when the booking has not reached the Pod
+ * yet or there is no Pod session.
  */
 router.get('/:id/ics', requireAuth(), async (req, res) => {
   try {
     const { id } = req.params;
-    const fetch = await getAuthenticatedFetch(req.solidSession);
-    const podUrl = selectPod(req.query.pod, await ownPods(req, fetch));
-    if (!podUrl) return res.status(503).json(NO_POD);
+    const slug = req.tenant?.booking_slug;
+    const timezone = accountTimezone(slug);
 
-    const bookings = await solidService.loadBookings(podUrl, fetch);
-    const booking = bookings.find(b => b.id === id);
+    let fetch;
+    try {
+      fetch = await getAuthenticatedFetch(req.solidSession);
+    } catch {
+      fetch = null;
+    }
+
+    let booking = null;
+    const podUrl = fetch ? selectPod(req.query.pod, await ownPods(req, fetch)) : null;
+    if (podUrl) {
+      await pushPendingToPod(req, podUrl, fetch);
+      booking = (await solidService.loadBookings(podUrl, fetch, { includeCancelled: true })).find(b => b.id === id) || null;
+    }
+    if (!booking) {
+      // This account's own local copy only
+      const row = slug ? getBookingById(id) : null;
+      if (row && row.slug === slug) booking = localRowToBooking(row, timezone);
+    }
 
     if (!booking) {
       return res.status(404).json({
@@ -966,9 +985,11 @@ router.get('/:id/ics', requireAuth(), async (req, res) => {
       uid: booking.id,
       recurrence: booking.recurrence,
       excludedDates: booking.excludedDates,
+      status: booking.status === SCHEMA.EventCancelled ? 'CANCELLED' : 'CONFIRMED',
+      timezone,
     });
 
-    const filename = `${booking.title.replace(/[^a-z0-9]/gi, '-')}.ics`;
+    const filename = `${String(booking.title || 'meeting').replace(/[^a-z0-9]/gi, '-').slice(0, 80) || 'meeting'}.ics`;
 
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

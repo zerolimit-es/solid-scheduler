@@ -396,3 +396,33 @@ describe('editing, cancelled bookings and statistics', () => {
     assert.ok(fromPod.upcoming >= 1 && fromPod.upcoming <= 2, 'next year, and today unless 23:00 has passed');
   });
 });
+
+describe('downloading a booking as .ics from the dashboard', () => {
+  const ics = (id) => fetch(`${baseUrl}/api/bookings/${id}/ics`);
+
+  it("serves a visitor's booking that has just been made, in the account's timezone", async () => {
+    insert('booking-fresh-ics', '2030-09-16 10:00', '2030-09-16 10:30', { title: 'Intro call' });
+    const res = await ics('booking-fresh-ics');
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type'), /text\/calendar/);
+    assert.match(res.headers.get('content-disposition'), /filename="Intro-call\.ics"/);
+    const body = await res.text();
+    assert.match(body, /DTSTART;TZID=Europe\/Paris:20300916T100000/);
+    assert.match(body, /BEGIN:VTIMEZONE/);
+  });
+
+  it('serves the local copy when the Pod cannot be reached', async () => {
+    insert('booking-offline-ics', '2030-09-16 11:00', '2030-09-16 11:30');
+    pod = null;
+    const res = await ics('booking-offline-ics');
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /UID:booking-offline-ics/);
+  });
+
+  it("answers 404 for an unknown booking or another account's", async () => {
+    sqlite.prepare(`INSERT INTO bookings (id, slug, title, start_time, end_time, attendee_name, attendee_email)
+      VALUES ('other-ics', 'someone-else', 'Not yours', '2030-09-16 10:00', '2030-09-16 10:30', 'X', 'x@example.com')`).run();
+    assert.equal((await ics('no-such-booking')).status, 404);
+    assert.equal((await ics('other-ics')).status, 404);
+  });
+});
