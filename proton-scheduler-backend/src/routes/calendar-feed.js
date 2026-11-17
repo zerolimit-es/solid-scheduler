@@ -60,7 +60,9 @@ router.get('/:token.ics', publicReadLimiter, (req, res) => {
     // Fetch bookings from SQLite (no auth session for Pod)
     const bookings = slug
       ? db.prepare(
-          `SELECT * FROM bookings WHERE slug = ? AND start_time >= ? AND start_time <= ? AND status = 'confirmed' ORDER BY start_time`
+          `SELECT * FROM bookings WHERE slug = ? AND status = 'confirmed'
+             AND ((start_time >= ? AND start_time <= ?) OR (recurrence IS NOT NULL AND recurrence != ''))
+           ORDER BY start_time`
         ).all(slug, `${fromStr} 00:00`, `${toStr} 23:59`)
       : [];
 
@@ -113,6 +115,8 @@ function bookingToVEvent(b, tz) {
   const dtstart = naiveToICSDate(b.start_time);
   const dtend = naiveToICSDate(b.end_time);
   const created = b.created_at ? dateToICS(new Date(b.created_at)) : dateToICS(new Date());
+  const recurring = typeof b.recurrence === 'string' && /^[A-Z0-9=;,:+-]+$/i.test(b.recurrence);
+  const excluded = String(b.excluded_dates || '').split(',').filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
 
   return [
     'BEGIN:VEVENT',
@@ -123,6 +127,9 @@ function bookingToVEvent(b, tz) {
     `SUMMARY:${escapeICS(b.title)}`,
     b.location ? `LOCATION:${escapeICS(b.location)}` : null,
     b.notes ? `DESCRIPTION:${escapeICS(b.notes)}` : null,
+    // A recurring booking: the rule, and the occurrences cancelled on their own
+    recurring ? `RRULE:${b.recurrence}` : null,
+    ...(recurring ? excluded.map((date) => `EXDATE;TZID=${tz}:${date.replace(/-/g, '')}T${dtstart.slice(9)}`) : []),
     `CATEGORIES:Booking`,
     'STATUS:CONFIRMED',
     'END:VEVENT',

@@ -23,7 +23,7 @@ import solidService from '../services/solid.js';
 import calendarService from '../services/calendar.js';
 import { generateICS } from '../utils/ics.js';
 import { SCHEMA } from '../utils/rdf.js';
-import { describeRecurrence } from '../utils/recurrence.js';
+import { describeRecurrence, buildRRule, parseRRule } from '../utils/recurrence.js';
 import { checkLimit } from '../cloud/config/tiers.js';
 import { requireFeature } from '../cloud/middleware/tierEnforcement.js';
 import { getUsage, incrementUsage, getDb } from '../cloud/models/database.js';
@@ -36,10 +36,14 @@ import {
   recordPodBooking,
   hasOverlappingBooking,
   cancelBookingForSlug,
+  getUnsyncedBookings,
+  markPodCancelPending,
+  addBookingExcludedDate,
 } from '../cloud/models/bookings-db.js';
 import { organizerIdentity } from '../utils/organizer.js';
 import { isValidTimeZone, instantToNaive, zonedToInstant, parseNaive } from '../utils/tz.js';
-import { sendVisitorConfirmation, sendOrganizerNotification } from '../cloud/services/email.js';
+import { sendVisitorConfirmation, sendOrganizerNotification, sendCancellationNotice } from '../cloud/services/email.js';
+import { syncBookingsToPod, syncCancellationsToPod } from '../cloud/services/pod-sync.js';
 
 const router = Router();
 
@@ -62,6 +66,90 @@ router.get('/presets', (req, res) => {
 });
 
 /**
+ * The signed-in user's Pods: those their WebID profile lists, or, when the
+ * profile lists none, the Pod URL they set by hand at sign-in. Empty when
+ * there is no Pod to use, in which case routes work from local data.
+ */
+async function ownPods(req, fetch) {
+  const discovered = await solidService.getUserPods(req.user.webId, fetch).catch(() => []);
+  if (discovered.length > 0) return discovered;
+  return [req.session?.podUrl || req.tenant?.solid_pod_url].filter(Boolean);
+}
+
+const NO_POD = { error: 'Pod unavailable', message: 'Your Pod could not be found. Reconnect it and try again.' };
+
+// ── Keeping the Pod view current ────────────────────────────────────────────
+//
+// Visitors' bookings are stored locally and pushed to the Pod. While the
+// owner is signed in the dashboard reads the Pod, so anything not pushed yet
+// would be missing from it: a booking made five minutes ago would only show
+// up after the next sign-in. Every Pod read therefore pushes pending changes
+// first, and whatever still could not be pushed is merged into the answer.
+
+function accountTimezone(slug) {
+  const saved = getAvailability(slug)?.timezone;
+  return isValidTimeZone(saved) ? saved : 'Europe/Paris';
+}
+
+/** A local booking row in the shape the Pod returns bookings. */
+function localRowToBooking(row, tz) {
+  const toInstant = (naive) => {
+    const wall = parseNaive(naive);
+    return wall ? zonedToInstant(wall.year, wall.month, wall.day, wall.hour, wall.minute, tz) : null;
+  };
+  return {
+    id: row.id,
+    title: row.title,
+    start: toInstant(row.start_time),
+    end: toInstant(row.end_time),
+    description: row.notes || '',
+    location: row.location,
+    status: row.status === 'cancelled' ? SCHEMA.EventCancelled : SCHEMA.EventConfirmed,
+    organizer: { name: row.organizer_name, email: row.organizer_email },
+    attendee: { name: row.attendee_name, email: row.attendee_email },
+    notes: row.notes || '',
+    isRecurring: !!row.recurrence,
+    recurrence: row.recurrence ? parseRRule(row.recurrence) : null,
+    excludedDates: [],
+    syncedToPod: !!row.synced_to_pod,
+  };
+}
+
+/** One push per booking page at a time: dashboard requests arrive in parallel. */
+const pushesInFlight = new Map();
+
+/**
+ * Push this account's pending bookings and cancellations to its Pod.
+ * Never throws: a Pod that cannot be written to is handled by the merge.
+ * @returns {Promise<object[]>} Confirmed local bookings that are still not in the Pod
+ */
+async function pushPendingToPod(req, podUrl, fetch) {
+  const slug = req.tenant?.booking_slug;
+  if (!slug || !podUrl) return [];
+  const tz = accountTimezone(slug);
+
+  if (!pushesInFlight.has(slug)) {
+    const push = (async () => {
+      await syncBookingsToPod(podUrl, fetch, slug, tz);
+      await syncCancellationsToPod(podUrl, fetch, slug);
+    })()
+      .catch((err) => console.warn('[Bookings] Could not push pending changes to the Pod:', err.message))
+      .finally(() => pushesInFlight.delete(slug));
+    pushesInFlight.set(slug, push);
+  }
+  await pushesInFlight.get(slug);
+
+  return getUnsyncedBookings(slug).map((row) => localRowToBooking(row, tz)).filter((b) => b.start && b.end);
+}
+
+/** Pod bookings plus local ones not yet in the Pod, without duplicates, soonest first. */
+function mergeBookings(podBookings, localBookings) {
+  const seen = new Set(podBookings.map((b) => b.id));
+  return [...podBookings, ...localBookings.filter((b) => !seen.has(b.id))]
+    .sort((a, b) => new Date(a.start) - new Date(b.start));
+}
+
+/**
  * GET /api/bookings
  * List bookings for the authenticated user
  */
@@ -76,9 +164,8 @@ router.get('/', requireAuth(), async (req, res) => {
       fetch = null;
     }
 
-    if (fetch) {
-      const pods = await solidService.getUserPods(req.user.webId, fetch);
-      const podUrl = selectPod(pod, pods);
+    const podUrl = fetch ? selectPod(pod, await ownPods(req, fetch)) : null;
+    if (podUrl) {
 
       const options = {};
       if (from) options.from = new Date(from);
@@ -86,7 +173,11 @@ router.get('/', requireAuth(), async (req, res) => {
       if (status === 'confirmed') options.status = SCHEMA.EventConfirmed;
       if (status === 'cancelled') options.status = SCHEMA.EventCancelled;
 
-      const bookings = await solidService.loadBookings(podUrl, fetch, options);
+      const pending = await pushPendingToPod(req, podUrl, fetch);
+      const podBookings = await solidService.loadBookings(podUrl, fetch, options);
+      // Pending local bookings are confirmed ones; apply the same filters
+      const bookings = mergeBookings(podBookings, status === 'cancelled' ? [] : pending.filter((b) =>
+        (!options.from || b.start >= options.from) && (!options.to || b.start <= options.to)));
 
       const enrichedBookings = bookings.map(b => ({
         ...b,
@@ -148,14 +239,15 @@ router.get('/expanded', requireAuth(), async (req, res) => {
     }
 
     const fetch = await getAuthenticatedFetch(req.solidSession);
-    const pods = await solidService.getUserPods(req.user.webId, fetch);
-    const podUrl = selectPod(pod, pods);
+    const podUrl = selectPod(pod, await ownPods(req, fetch));
+    if (!podUrl) return res.status(503).json(NO_POD);
 
     const expanded = await calendarService.getExpandedBookings(
       podUrl,
       fetch,
       new Date(from),
-      new Date(to)
+      new Date(to),
+      { timezone: accountTimezone(req.tenant?.booking_slug) },
     );
 
     res.json({
@@ -288,10 +380,9 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
       fetch = null;
     }
 
-    if (fetch) {
+    const podUrl = fetch ? selectPod(req.query.pod, await ownPods(req, fetch)) : null;
+    if (podUrl) {
       // ── Happy path: Solid session available → save to Pod ──
-      const pods = await solidService.getUserPods(req.user.webId, fetch);
-      const podUrl = selectPod(req.query.pod, pods);
 
       const booking = await calendarService.createBooking(
         {
@@ -311,8 +402,8 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
       }
 
       // Keep a local record: the public booking page and the calendar feed
-      // read SQLite, not the Pod, and must see this time as taken. (For a
-      // recurring booking this covers the first occurrence only.)
+      // read SQLite, not the Pod, and must see this time as taken, on every
+      // occurrence if the booking repeats.
       if (slugForTimes) {
         try {
           recordPodBooking({
@@ -329,6 +420,7 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
             location: booking.location || location,
             icsContent: booking.icsContent,
             podUrl: booking.url,
+            recurrence: recurrence ? buildRRule(recurrence) : null,
           });
         } catch (dbErr) {
           console.warn('[Bookings] Could not record Pod booking locally:', dbErr.message);
@@ -398,6 +490,7 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
       attendeeEmail: attendee.email,
       notes: notes || '',
       location: location || 'Video Call',
+      recurrence: recurrence ? buildRRule(recurrence) : null,
     };
 
     const bookAndCount = getDb().transaction((payload, tenantId) => {
@@ -433,6 +526,7 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
       organizer: host,
       attendee,
       uid: bookingId,
+      recurrence,
       timezone: bookingAvail?.timezone,
     });
 
@@ -505,15 +599,15 @@ router.get('/upcoming', requireAuth(), async (req, res) => {
       fetch = null;
     }
 
-    if (fetch) {
-      const pods = await solidService.getUserPods(req.user.webId, fetch);
-      const podUrl = selectPod(pod, pods);
+    const podUrl = fetch ? selectPod(pod, await ownPods(req, fetch)) : null;
+    if (podUrl) {
 
-      const bookings = await calendarService.getUpcomingBookings(
-        podUrl,
-        fetch,
-        parseInt(limit)
-      );
+      const max = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 200);
+      const now = new Date();
+      const pending = await pushPendingToPod(req, podUrl, fetch);
+      const podBookings = await calendarService.getUpcomingBookings(podUrl, fetch, max,
+        { timezone: accountTimezone(req.tenant?.booking_slug) });
+      const bookings = mergeBookings(podBookings, pending.filter((b) => b.start >= now)).slice(0, max);
 
       const enrichedBookings = bookings.map(b => ({
         ...b,
@@ -567,9 +661,9 @@ router.get('/stats', requireAuth(), async (req, res) => {
       fetch = null;
     }
 
-    if (fetch) {
-      const pods = await solidService.getUserPods(req.user.webId, fetch);
-      const podUrl = selectPod(req.query.pod, pods);
+    const podUrl = fetch ? selectPod(req.query.pod, await ownPods(req, fetch)) : null;
+    if (podUrl) {
+      await pushPendingToPod(req, podUrl, fetch);
       const stats = await calendarService.getBookingStats(podUrl, fetch);
       return res.json(stats);
     }
@@ -604,9 +698,8 @@ router.get('/:id', requireAuth(), async (req, res) => {
       fetch = null;
     }
 
-    if (fetch) {
-      const pods = await solidService.getUserPods(req.user.webId, fetch);
-      const podUrl = selectPod(req.query.pod, pods);
+    const podUrl = fetch ? selectPod(req.query.pod, await ownPods(req, fetch)) : null;
+    if (podUrl) {
 
       const bookings = await solidService.loadBookings(podUrl, fetch);
       const booking = bookings.find(b => b.id === id);
@@ -677,8 +770,8 @@ router.put('/:id', requireAuth(), async (req, res) => {
     const { title, description, location, recurrence, scope, occurrenceDate } = req.body;
 
     const fetch = await getAuthenticatedFetch(req.solidSession);
-    const pods = await solidService.getUserPods(req.user.webId, fetch);
-    const podUrl = selectPod(req.query.pod, pods);
+    const podUrl = selectPod(req.query.pod, await ownPods(req, fetch));
+    if (!podUrl) return res.status(503).json(NO_POD);
 
     const updates = {};
     if (title) updates.title = title;
@@ -723,26 +816,72 @@ router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req
   try {
     const { id } = req.params;
     const { reason, notify = true, scope = 'all', occurrenceDate } = req.body || {};
+    const slug = req.tenant?.booking_slug;
 
-    const fetch = await getAuthenticatedFetch(req.solidSession);
-    const pods = await solidService.getUserPods(req.user.webId, fetch);
-    const podUrl = selectPod(req.query.pod, pods);
+    let fetch;
+    try {
+      fetch = await getAuthenticatedFetch(req.solidSession);
+    } catch {
+      fetch = null;
+    }
 
-    const booking = await calendarService.cancelBookingById(podUrl, id, fetch, {
-      reason,
-      skipEmail: !notify,
-      cancelledBy: 'the organizer',
-      scope,
-      occurrenceDate: occurrenceDate ? new Date(occurrenceDate) : null,
-    });
+    let booking = null;
+    const podUrl = fetch ? selectPod(req.query.pod, await ownPods(req, fetch)) : null;
+    if (podUrl) {
+      // A booking made since the last push is not in the Pod yet: push first
+      await pushPendingToPod(req, podUrl, fetch);
+      try {
+        booking = await calendarService.cancelBookingById(podUrl, id, fetch, {
+          reason,
+          skipEmail: !notify,
+          cancelledBy: 'the organizer',
+          scope,
+          occurrenceDate: occurrenceDate ? new Date(occurrenceDate) : null,
+        });
+      } catch (podErr) {
+        if (!/not found/i.test(podErr.message || '')) throw podErr;
+      }
+    }
+
+    if (!booking) {
+      // Not in the Pod (it could not be pushed), or no Pod session: cancel
+      // this account's local copy. If a Pod copy exists it is cancelled at
+      // the next push.
+      const row = slug ? getBookingById(id) : null;
+      if (!row || row.slug !== slug || row.status !== 'confirmed') {
+        return res.status(404).json({ error: 'Booking not found', message: `No booking found with ID: ${id}` });
+      }
+      cancelBookingForSlug(row.id, slug);
+      if (row.pod_url) markPodCancelPending(row.id);
+      caldav().bookingCancelled(slug, row.id);
+
+      const local = localRowToBooking(row, accountTimezone(slug));
+      if (notify) {
+        sendCancellationNotice({ ...local, organizer: organizerIdentity(getAvailability(slug)) }, { cancelledBy: 'the organizer' })
+          .catch((err) => console.error('[Email] ✗ Cancellation notice failed:', err.message));
+      }
+      return res.json({
+        success: true,
+        message: 'Booking cancelled',
+        booking: { id: row.id, title: row.title, start: local.start, end: local.end },
+      });
+    }
 
     // Remove it from the operator's CalDAV calendar, and cancel the local
     // copy so the public page frees the slot and the feed drops it.
     // Cancelling one occurrence of a series leaves the series in place.
-    if (!(scope === 'single' && occurrenceDate)) {
-      caldav().bookingCancelled(req.tenant?.booking_slug, id);
+    if (scope === 'single' && occurrenceDate) {
+      // Free that one occurrence's slot; the rest of the series stays
       try {
-        cancelBookingForSlug(booking.id, req.tenant?.booking_slug);
+        const localDate = instantToNaive(new Date(occurrenceDate), accountTimezone(slug))?.slice(0, 10);
+        if (localDate) addBookingExcludedDate(booking.id, slug, localDate);
+      } catch (dbErr) {
+        console.warn('[Bookings] Could not record cancelled occurrence locally:', dbErr.message);
+      }
+    } else {
+      caldav().bookingCancelled(slug, id);
+      try {
+        cancelBookingForSlug(booking.id, slug);
       } catch (dbErr) {
         console.warn('[Bookings] Could not cancel local copy:', dbErr.message);
       }
@@ -789,8 +928,8 @@ router.get('/:id/ics', requireAuth(), async (req, res) => {
   try {
     const { id } = req.params;
     const fetch = await getAuthenticatedFetch(req.solidSession);
-    const pods = await solidService.getUserPods(req.user.webId, fetch);
-    const podUrl = selectPod(req.query.pod, pods);
+    const podUrl = selectPod(req.query.pod, await ownPods(req, fetch));
+    if (!podUrl) return res.status(503).json(NO_POD);
 
     const bookings = await solidService.loadBookings(podUrl, fetch);
     const booking = bookings.find(b => b.id === id);

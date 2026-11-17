@@ -184,7 +184,6 @@ export default function useBookings({ user, publicSlug, availability, setView, s
             name: bookingForm.name,
             email: bookingForm.email,
             notes: bookingForm.notes,
-            recurrence: bookingForm.recurrence,
           }),
         });
         result = await res.json();

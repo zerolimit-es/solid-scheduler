@@ -1,16 +1,18 @@
 /**
- * Minimal RRULE Expander
+ * RRULE helpers for calendar events ("blocked time").
  *
- * Expands iCalendar RRULE strings into concrete occurrence dates within a
- * given date range.  Supports the subset of RFC 5545 needed by SolidScheduler:
+ * Parses and builds iCalendar RRULE strings, and expands them into concrete
+ * occurrences within a date range. Supports the subset of RFC 5545 needed by
+ * SolidScheduler:
  *
  *   FREQ   = DAILY | WEEKLY | MONTHLY | YEARLY
- *   INTERVAL, COUNT, UNTIL, BYDAY
- *
- * No external library — keeps the server bundle small.
+ *   INTERVAL, COUNT, UNTIL, BYDAY, BYMONTHDAY, BYMONTH
  */
 
-const DAY_MAP = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+import {
+  generateOccurrences,
+  parseRRule as parseFullRRule,
+} from '@zerolimit/packages/solid-pod-sync/core';
 
 /**
  * Parse an RRULE string into a structured object.
@@ -52,100 +54,53 @@ function parseUntil(val) {
   );
 }
 
-/**
- * Add N intervals to a date based on frequency.
- * Returns a new Date (does not mutate).
- */
-function addInterval(date, freq, n) {
-  const d = new Date(date);
-  switch (freq) {
-    case 'DAILY':
-      d.setDate(d.getDate() + n);
-      break;
-    case 'WEEKLY':
-      d.setDate(d.getDate() + n * 7);
-      break;
-    case 'MONTHLY':
-      d.setMonth(d.getMonth() + n);
-      break;
-    case 'YEARLY':
-      d.setFullYear(d.getFullYear() + n);
-      break;
-  }
-  return d;
-}
+// Stored times are naive local times ("YYYY-MM-DD HH:MM"): `new Date()` reads
+// them in the server's timezone. Recurrence is worked out on wall-clock
+// dates (UTC fields holding the local date and time), so the result is the
+// same local time on every occurrence whatever the server's timezone.
+const localToWall = (d) => new Date(Date.UTC(
+  d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()));
+const wallToLocal = (w) => new Date(
+  w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate(), w.getUTCHours(), w.getUTCMinutes(), w.getUTCSeconds());
 
 /**
- * Expand an RRULE into concrete occurrence start dates within [rangeStart, rangeEnd].
+ * Expand an RRULE into the occurrences that start within a range.
  *
- * @param {string} rruleStr — The RRULE string
- * @param {Date|string} dtstart — The base event start date
- * @param {Date|string} rangeStart — Start of the query range
- * @param {Date|string} rangeEnd — End of the query range
- * @param {string[]} [excludedDates] — ISO date strings to skip (EXDATE)
- * @returns {Date[]} Array of occurrence start dates within range
+ * Uses the same engine as recurring bookings (@zerolimit/solid-pod-sync),
+ * so COUNT is counted from the first occurrence, days that do not exist are
+ * skipped, and a series keeps producing occurrences however long ago it
+ * started.
+ *
+ * @param {string} rruleStr - e.g. "FREQ=WEEKLY;BYDAY=MO,WE"
+ * @param {string|Date} dtstart - First occurrence (naive local time)
+ * @param {string|Date} rangeStart
+ * @param {string|Date} rangeEnd
+ * @param {Array<string|Date>} [excludedDates] - Occurrences to leave out
+ * @returns {Date[]} Occurrence start times, as local Dates
  */
 export function expandRRule(rruleStr, dtstart, rangeStart, rangeEnd, excludedDates = []) {
   const rule = parseRRule(rruleStr);
   if (!rule) return [new Date(dtstart)];
 
-  const start = new Date(dtstart);
-  const from = new Date(rangeStart);
-  const to = new Date(rangeEnd);
-  const excluded = new Set(excludedDates.map(d => new Date(d).toDateString()));
-
-  // Safety limit — prevent runaway expansion
-  const MAX_OCCURRENCES = 500;
-  const occurrences = [];
-  let count = 0;
-
-  if (rule.freq === 'WEEKLY' && rule.byDay && rule.byDay.length > 0) {
-    // WEEKLY + BYDAY: generate occurrences for each specified day of the week
-    const targetDays = rule.byDay.map(d => DAY_MAP[d.toUpperCase()]).filter(d => d !== undefined);
-    let weekStart = new Date(start);
-
-    while (weekStart <= to && count < MAX_OCCURRENCES) {
-      if (rule.count !== null && occurrences.length >= rule.count) break;
-      if (rule.until && weekStart > rule.until) break;
-
-      for (const dayNum of targetDays) {
-        const occ = new Date(weekStart);
-        const diff = dayNum - occ.getDay();
-        occ.setDate(occ.getDate() + diff);
-        // Keep original time
-        occ.setHours(start.getHours(), start.getMinutes(), start.getSeconds());
-
-        if (occ < start) continue;
-        if (occ > to) continue;
-        if (rule.until && occ > rule.until) continue;
-        if (rule.count !== null && occurrences.length >= rule.count) break;
-        if (excluded.has(occ.toDateString())) { count++; continue; }
-
-        if (occ >= from) {
-          occurrences.push(new Date(occ));
-        }
-        count++;
-      }
-
-      weekStart = addInterval(weekStart, 'WEEKLY', rule.interval);
-    }
-  } else {
-    // Simple interval-based expansion
-    let current = new Date(start);
-
-    while (current <= to && count < MAX_OCCURRENCES) {
-      if (rule.count !== null && count >= rule.count) break;
-      if (rule.until && current > rule.until) break;
-
-      if (current >= from && !excluded.has(current.toDateString())) {
-        occurrences.push(new Date(current));
-      }
-      count++;
-      current = addInterval(current, rule.freq, rule.interval);
-    }
-  }
-
-  return occurrences;
+  const fullRule = parseFullRRule(rruleStr) || {};
+  return generateOccurrences(
+    localToWall(new Date(dtstart)),
+    {
+      ...fullRule,
+      frequency: rule.freq,
+      interval: rule.interval,
+      count: rule.count,
+      // parseUntil() gives UNTIL as UTC fields, which is wall time here
+      until: rule.until,
+      byDay: rule.byDay,
+    },
+    {
+      rangeStart: localToWall(new Date(rangeStart)),
+      rangeEnd: localToWall(new Date(rangeEnd)),
+      excludedDates: excludedDates.map((d) => localToWall(new Date(d))),
+      maxOccurrences: 5000,
+    },
+  ).map(wallToLocal);
 }
 
 /**

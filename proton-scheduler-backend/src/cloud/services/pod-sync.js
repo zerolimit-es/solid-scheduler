@@ -22,6 +22,7 @@ import {
 import { getUnsyncedCalendarEvents, markCalendarEventSynced } from '../models/calendar-events-db.js';
 import solidService from '../../services/solid.js';
 import { organizerIdentity } from '../../utils/organizer.js';
+import { parseRRule as parseRecurrence } from '../../utils/recurrence.js';
 
 /**
  * Convert a naive local time (from SQLite) to a proper UTC ISO string.
@@ -122,6 +123,8 @@ export async function syncBookingsToPod(podUrl, fetch, slug, timezone = 'Europe/
         },
         notes: booking.notes || '',
         confirmationSent: true,
+        recurrence: booking.recurrence ? parseRecurrence(booking.recurrence) : null,
+        isRecurring: !!booking.recurrence,
       };
 
       // Write to Pod

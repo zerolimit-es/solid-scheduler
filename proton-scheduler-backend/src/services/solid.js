@@ -81,8 +81,8 @@ export function setupPublicBookingPage(podUrl, publicInfo, fetch) {
   return _setupPublicBookingPage(podUrl, publicInfo, fetch, podPaths);
 }
 
-export function checkSlotConflict(podUrl, start, end, fetch) {
-  return _checkSlotConflict(podUrl, start, end, fetch, podPaths);
+export function checkSlotConflict(podUrl, start, end, fetch, options = {}) {
+  return _checkSlotConflict(podUrl, start, end, fetch, podPaths, options);
 }
 
 // Re-export functions that don't need path config

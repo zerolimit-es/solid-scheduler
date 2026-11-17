@@ -3,14 +3,25 @@ import assert from 'node:assert/strict';
 import {
   parseRRule,
   buildRRule,
-  generateOccurrences,
+  generateOccurrences as generateOccurrencesIn,
   describeRecurrence,
-  getNextOccurrence,
+  getNextOccurrence as getNextOccurrenceIn,
   isSameOccurrence,
   generateSeriesId,
-  expandRecurringEvent,
+  expandRecurringEvent as expandRecurringEventIn,
   RECURRENCE_PRESETS,
 } from './recurrence.js';
+
+// These tests build dates in the machine's local time and read results back
+// with local getters (getDate(), getDay()), so recurrence must be worked out
+// in that same timezone. Without one the engine repeats in UTC.
+const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const generateOccurrences = (start, rule, options = {}) =>
+  generateOccurrencesIn(start, rule, { timezone: LOCAL_TZ, ...options });
+const expandRecurringEvent = (event, options = {}) =>
+  expandRecurringEventIn(event, { timezone: LOCAL_TZ, ...options });
+const getNextOccurrence = (start, rule, after) =>
+  getNextOccurrenceIn(start, rule, after, { timezone: LOCAL_TZ });
 
 // Helper: create a local date at 10:00 AM to avoid UTC date-shift issues.
 // Month is 1-based (1=Jan) for readability.
@@ -314,10 +325,10 @@ describe('generateOccurrences', () => {
         excludedDates: [date(2025, 1, 8)], // Exclude Jan 8
       },
     );
-    assert.equal(result.length, 4);
+    // A cancelled occurrence still counts towards COUNT (RFC 5545): the
+    // series is Jan 6-9, with Jan 8 left out. It does not grow by a day.
     const dates = result.map(d => d.getDate());
-    // Jan 8 skipped, so: 6, 7, 9, 10
-    assert.deepEqual(dates, [6, 7, 9, 10]);
+    assert.deepEqual(dates, [6, 7, 9]);
   });
 
   it('respects rangeStart and rangeEnd', () => {
@@ -555,10 +566,9 @@ describe('expandRecurringEvent', () => {
     const result = expandRecurringEvent(event, {
       rangeEnd: date(2025, 2, 1),
     });
-    // Jan 7 excluded; count=3 still fills 3 results: Jan 6, 8, 9
-    assert.equal(result.length, 3);
+    // Jan 7 is cancelled and still counts towards COUNT=3: Jan 6 and 8 remain
     const dates = result.map(o => o.start.getDate());
-    assert.ok(!dates.includes(7));
+    assert.deepEqual(dates, [6, 8]);
   });
 
   it('applies exceptions to matching occurrences', () => {

@@ -82,6 +82,8 @@ export const publicBookingSchema = z.object({
   email: emailField,
   notes: notesField,
   teamMemberId: z.string().max(100).optional(),
+  // Accepted for older clients but not acted on: a visitor books a single
+  // meeting. Only the organizer can book a series, from the dashboard.
   recurrence: recurrenceField,
 });
 

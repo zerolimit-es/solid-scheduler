@@ -18,7 +18,7 @@ export default function ConfirmationView({ bookedEvent, setView, setBookedEvent,
       <h2 className="text-[1.375rem] font-bold text-[var(--user-text)] m-0 mb-1.5">Meeting Confirmed!</h2>
       <p className="text-sm text-[var(--user-text-muted)] m-0 mb-6">
         {bookedEvent.isRecurring
-          ? `${bookedEvent.recurrenceCount || ''} meetings have been scheduled`
+          ? `${bookedEvent.recurrence?.count ? `${bookedEvent.recurrence.count} meetings` : 'A repeating meeting'} ${bookedEvent.recurrence?.count ? 'have' : 'has'} been scheduled`
           : 'Your meeting has been scheduled'}
       </p>
       <div className="bg-[var(--user-card-bg)] border border-[var(--user-card-border)] rounded-xl p-5 mb-5 text-left">
