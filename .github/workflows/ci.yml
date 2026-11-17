@@ -23,7 +23,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: proton-scheduler-backend
+        working-directory: solid-scheduler-backend
 
     steps:
       - name: Checkout code
@@ -55,7 +55,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: proton-scheduler-frontend
+        working-directory: solid-scheduler-frontend
 
     steps:
       - name: Checkout code

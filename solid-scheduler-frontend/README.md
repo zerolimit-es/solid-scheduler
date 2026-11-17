@@ -13,7 +13,7 @@ A React frontend for SolidScheduler, built with Vite and Tailwind CSS v4.
 ## Quick Start
 
 ```bash
-cd proton-scheduler-frontend
+cd solid-scheduler-frontend
 npm install
 npm run dev    # http://localhost:3000
 ```
@@ -30,7 +30,7 @@ npm run preview
 ## Project Structure
 
 ```
-proton-scheduler-frontend/
+solid-scheduler-frontend/
 ├── src/
 │   ├── App.jsx                    # Main application
 │   ├── main.jsx                   # Entry point

@@ -7,7 +7,7 @@ version: 2
 updates:
   # Backend (Express API)
   - package-ecosystem: npm
-    directory: /proton-scheduler-backend
+    directory: /solid-scheduler-backend
     schedule:
       interval: weekly
       day: monday
@@ -22,7 +22,7 @@ updates:
 
   # Frontend (React SPA)
   - package-ecosystem: npm
-    directory: /proton-scheduler-frontend
+    directory: /solid-scheduler-frontend
     schedule:
       interval: weekly
       day: monday

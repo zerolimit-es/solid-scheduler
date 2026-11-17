@@ -1,10 +1,10 @@
 # SolidScheduler Frontend Dockerfile
 # Multi-stage build for optimized production image
 #
-# Build context must be the REPO ROOT (not proton-scheduler-frontend/).
+# Build context must be the REPO ROOT (not solid-scheduler-frontend/).
 #
 # Usage:
-#   docker build -f proton-scheduler-frontend/Dockerfile .
+#   docker build -f solid-scheduler-frontend/Dockerfile .
 #   docker compose build frontend
 
 # =============================================================================
@@ -18,7 +18,7 @@ WORKDIR /app
 RUN apk add --no-cache git openssh-client
 
 # Copy package files (from repo root context)
-COPY proton-scheduler-frontend/package*.json ./
+COPY solid-scheduler-frontend/package*.json ./
 
 # Install all dependencies using SSH agent forwarding for private packages
 # Use npm install (not npm ci) to resolve platform-specific optional deps correctly
@@ -30,13 +30,13 @@ RUN --mount=type=ssh rm -f package-lock.json && npm install && npm cache clean -
 FROM node:22-alpine AS builder
 
 # Mirror the repo layout so Vite's ../cloud/frontend alias resolves correctly
-WORKDIR /workspace/proton-scheduler-frontend
+WORKDIR /workspace/solid-scheduler-frontend
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
 # Copy frontend source
-COPY proton-scheduler-frontend/ ./
+COPY solid-scheduler-frontend/ ./
 
 # Build the application
 RUN npm run build
@@ -46,17 +46,17 @@ RUN npm run build
 # =============================================================================
 FROM node:22-alpine AS development
 
-WORKDIR /workspace/proton-scheduler-frontend
+WORKDIR /workspace/solid-scheduler-frontend
 
 # git is needed to fetch the @zerolimit/packages dependency from GitHub
 RUN apk add --no-cache git
 
 # Copy package files and install dependencies (same way as the deps stage)
-COPY proton-scheduler-frontend/package*.json ./
+COPY solid-scheduler-frontend/package*.json ./
 RUN rm -f package-lock.json && npm install
 
 # Copy source code
-COPY proton-scheduler-frontend/ ./
+COPY solid-scheduler-frontend/ ./
 
 # Expose port
 EXPOSE 3000
@@ -78,10 +78,10 @@ LABEL org.opencontainers.image.vendor="SolidScheduler"
 RUN rm /etc/nginx/conf.d/default.conf
 
 # Copy custom nginx config
-COPY proton-scheduler-frontend/nginx.conf /etc/nginx/conf.d/
+COPY solid-scheduler-frontend/nginx.conf /etc/nginx/conf.d/
 
 # Copy built assets from builder stage
-COPY --from=builder /workspace/proton-scheduler-frontend/dist /usr/share/nginx/html
+COPY --from=builder /workspace/solid-scheduler-frontend/dist /usr/share/nginx/html
 
 # Add non-root user permissions
 RUN chown -R nginx:nginx /usr/share/nginx/html && \

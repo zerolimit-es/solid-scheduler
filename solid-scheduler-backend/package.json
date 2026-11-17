@@ -1,5 +1,5 @@
 {
-  "name": "proton-scheduler-backend",
+  "name": "solid-scheduler-backend",
   "version": "1.0.0",
   "description": "A Calendly-like scheduling app built on Solid/Inrupt for privacy-first calendar management with Proton",
   "type": "module",

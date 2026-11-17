@@ -39,8 +39,8 @@ git clone https://github.com/zerolimit-es/solid-scheduler.git
 cd solid-scheduler
 
 # Install dependencies
-cd proton-scheduler-backend && npm install && cd ..
-cd proton-scheduler-frontend && npm install && cd ..
+cd solid-scheduler-backend && npm install && cd ..
+cd solid-scheduler-frontend && npm install && cd ..
 
 # Configure
 cp .env.example .env
@@ -48,10 +48,10 @@ cp .env.example .env
 
 # Start development servers
 # Terminal 1 — Backend
-cd proton-scheduler-backend && npm run dev
+cd solid-scheduler-backend && npm run dev
 
 # Terminal 2 — Frontend
-cd proton-scheduler-frontend && npm run dev
+cd solid-scheduler-frontend && npm run dev
 ```
 
 Or with Docker:
@@ -65,7 +65,7 @@ make dev      # Start frontend dev server (Vite)
 
 ```
 solid-scheduler/
-├── proton-scheduler-backend/     # Express API (Node 22, ESM)
+├── solid-scheduler-backend/      # Express API (Node 22, ESM)
 │   ├── src/
 │   │   ├── config/               # Configuration
 │   │   ├── middleware/           # auth, validate (Zod), rateLimit
@@ -74,7 +74,7 @@ solid-scheduler/
 │   │   └── utils/                # ics, recurrence, rdf
 │   └── package.json
 │
-├── proton-scheduler-frontend/    # React frontend (Vite + Tailwind v4)
+├── solid-scheduler-frontend/     # React frontend (Vite + Tailwind v4)
 │   ├── src/
 │   │   ├── App.jsx               # Main application
 │   │   ├── hooks/                # useAuth, useBookings
