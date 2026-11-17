@@ -11,7 +11,7 @@ const ALL_TIMEZONES = (() => {
   } catch { return []; }
 })();
 
-export default function TimezoneSearch({ value, onChange }) {
+export default function TimezoneSearch({ id, value, onChange }) {
   const [query, setQuery] = React.useState('');
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
@@ -30,29 +30,42 @@ export default function TimezoneSearch({ value, onChange }) {
   return (
     <div className="relative" ref={ref}>
       <input
+        id={id}
         type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
         className="form-input"
         placeholder="Search timezone..."
         value={open ? query : (current ? current.label : value)}
         onFocus={() => { setOpen(true); setQuery(''); }}
         onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { setOpen(false); setQuery(''); }
+          if (e.key === 'Enter' && open) {
+            // Enter picks the first match
+            e.preventDefault();
+            if (filtered[0]) { onChange(filtered[0].id); setOpen(false); setQuery(''); }
+          }
+        }}
       />
       {open && (
         <div className="absolute top-full left-0 right-0 z-50 max-h-60 overflow-y-auto mt-1 bg-[var(--theme-dropdown-bg)] border border-[var(--theme-dropdown-border)] rounded-[10px] shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
           {filtered.length === 0
             ? <div className="px-3.5 py-3 text-[13px] text-[var(--theme-text-disabled)] text-center">No timezones found</div>
             : filtered.map(t => (
-                <div
+                <button
+                  type="button"
                   key={t.id}
-                  className={`px-3.5 py-2 text-[13px] cursor-pointer transition-colors duration-150 ${
+                  className={`block w-full text-left bg-transparent border-none px-3.5 py-2 text-[13px] cursor-pointer transition-colors duration-150 ${
                     t.id === value
                       ? 'bg-[rgba(var(--color-secondary-rgb),0.1)] text-[var(--color-secondary)]'
-                      : 'text-[var(--theme-text-body)] hover:bg-[rgba(var(--color-primary-rgb),0.15)] hover:text-white'
+                      : 'text-[var(--theme-text-body)] hover:bg-[rgba(var(--color-primary-rgb),0.15)] focus:bg-[rgba(var(--color-primary-rgb),0.15)] hover:text-[var(--color-text-primary)]'
                   }`}
                   onClick={() => { onChange(t.id); setOpen(false); setQuery(''); }}
                 >
                   {t.label}
-                </div>
+                </button>
               ))
           }
         </div>

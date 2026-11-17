@@ -66,6 +66,9 @@ export default function SolidScheduler() {
 
   // ── Availability ───────────────────────────────────────────────────────
   const [availability, setAvailability] = useState(null);
+  // What the server last confirmed, so saving one card doesn't also save
+  // unsaved edits in the other
+  const [savedAvailability, setSavedAvailability] = useState(null);
 
   // ── Dashboard data ─────────────────────────────────────────────────────
   const [bookings, setBookings] = useState([]);
@@ -145,11 +148,11 @@ export default function SolidScheduler() {
           api.bookings.getStats(user.pods[0]).catch(() => ({})),
         ]);
 
-        if (availRes?.configured) {
-          setAvailability(availRes.availability);
-        } else {
-          setAvailability(getDefaultAvailability());
-        }
+        const loaded = availRes?.configured
+          ? availRes.availability
+          : { ...getDefaultAvailability(), bookingSlug: availRes?.bookingSlug || '' };
+        setAvailability(loaded);
+        setSavedAvailability(loaded);
 
         setStats(statsRes);
 
@@ -167,15 +170,25 @@ export default function SolidScheduler() {
   const handleLogout = async () => {
     await logout();
     setAvailability(null);
+    setSavedAvailability(null);
     setBookings([]);
   };
 
+  const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+  // Weekly hours: save the edited days on top of the saved settings
   const handleSaveAvailability = async () => {
     if (!user || !availability) return;
     setAvailSaving(true);
     setError(null);
     try {
-      await api.availability.update(availability, user.pods[0]);
+      const next = { ...(savedAvailability || availability) };
+      for (const day of DAYS) next[day] = availability[day];
+      delete next.days; // the flat days above are what was edited
+      const res = await api.availability.update(next, user.pods[0]);
+      const confirmed = { ...next, bookingSlug: res?.bookingSlug || next.bookingSlug };
+      setSavedAvailability(confirmed);
+      setAvailability((prev) => ({ ...prev, bookingSlug: confirmed.bookingSlug }));
       setAvailSaved(true);
       setTimeout(() => setAvailSaved(false), 3000);
     } catch (err) {
@@ -183,6 +196,18 @@ export default function SolidScheduler() {
     } finally {
       setAvailSaving(false);
     }
+  };
+
+  // Booking page settings: save them on top of the saved weekly hours.
+  // Throws so the settings card can show the error next to the form.
+  const handleSaveSettings = async (settings) => {
+    const base = { ...(savedAvailability || availability || getDefaultAvailability()) };
+    delete base.days;
+    const next = { ...base, ...settings };
+    const res = await api.availability.update(next, user?.pods?.[0]);
+    const confirmed = { ...next, bookingSlug: res?.bookingSlug || next.bookingSlug };
+    setSavedAvailability(confirmed);
+    setAvailability((prev) => ({ ...prev, ...settings, bookingSlug: confirmed.bookingSlug }));
   };
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -384,6 +409,8 @@ export default function SolidScheduler() {
             saving={availSaving}
             saved={availSaved}
             handleSaveAvailability={handleSaveAvailability}
+            savedAvailability={savedAvailability}
+            handleSaveSettings={handleSaveSettings}
             setAvailability={setAvailability}
             setError={setError}
           />

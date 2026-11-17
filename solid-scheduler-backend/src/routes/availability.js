@@ -67,6 +67,8 @@ router.get('/', requireAuth(), async (req, res) => {
         // Also update SQLite with Pod data (Pod is source of truth)
         const slug = availability.bookingSlug || req.tenant?.booking_slug || null;
         try { saveLocalAvailability(availability, slug); } catch {}
+        // The account's booking link is the one in the database
+        if (req.tenant?.booking_slug) availability.bookingSlug = req.tenant.booking_slug;
         return res.json({ configured: true, podUrl, availability, source: 'pod' });
       }
     }
@@ -96,9 +98,14 @@ router.get('/', requireAuth(), async (req, res) => {
       for (const d of ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']) {
         if (!local[d]) local[d] = { enabled: false, start: '09:00', end: '17:00' };
       }
+      if (req.tenant?.booking_slug) local.bookingSlug = req.tenant.booking_slug;
       return res.json({ configured: true, podUrl: 'local', availability: local, source: 'sqlite' });
     }
-    return res.json({ configured: false, message: 'Availability not configured yet' });
+    return res.json({
+      configured: false,
+      message: 'Availability not configured yet',
+      bookingSlug: req.tenant?.booking_slug || null,
+    });
   } catch (dbErr) {
     return res.status(500).json({ error: 'Failed to load availability', message: dbErr.message });
   }
@@ -135,12 +142,19 @@ router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, r
   if (availability.organizerName !== undefined) availability.name = availability.organizerName;
   if (availability.organizerEmail !== undefined) availability.email = availability.organizerEmail;
 
-  // Map frontend field names to Pod field names
-
-  // 1. Always save to SQLite first (normalize slug to lowercase)
-  const rawSlug = availability.bookingSlug || req.tenant?.booking_slug || null;
-  const slug = rawSlug ? rawSlug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : null;
-  if (availability.bookingSlug) availability.bookingSlug = slug;
+  // 1. Always save to SQLite first. The booking link is normalised to
+  // lowercase letters, digits and dashes; one with none of those is refused.
+  let slug = req.tenant?.booking_slug || null;
+  if (availability.bookingSlug) {
+    slug = normalizeSlug(availability.bookingSlug);
+    if (!slug) {
+      return res.status(400).json({
+        error: 'Invalid booking link',
+        message: 'A booking link needs at least one letter or digit.',
+      });
+    }
+  }
+  if (slug) availability.bookingSlug = slug;
 
   // Move the account to the new slug first, taking its bookings and saved
   // availability along (they are keyed by slug). Refused when the slug is
@@ -186,6 +200,7 @@ router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, r
     success: true,
     message: podSaved ? 'Saved to Pod and local DB' : 'Saved locally (will sync to Pod on next login)',
     source: podSaved ? 'pod+sqlite' : 'sqlite',
+    bookingSlug: slug,
   });
 });
 
