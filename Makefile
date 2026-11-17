@@ -2,7 +2,7 @@
 
 # ── Development ──
 dev:
-	cd proton-scheduler-frontend && npm run dev
+	cd solid-scheduler-frontend && npm run dev
 
 dev-up:
 	docker compose up -d backend redis
@@ -13,7 +13,7 @@ dev-down:
 
 # ── Production ──
 build:
-	cd proton-scheduler-frontend && npm install --include=dev && npm run build
+	cd solid-scheduler-frontend && npm install --include=dev && npm run build
 	docker compose up -d --build
 	@echo "✓ Production build complete"
 

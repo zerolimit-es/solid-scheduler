@@ -17,14 +17,14 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: proton-scheduler-frontend/Dockerfile
+      dockerfile: solid-scheduler-frontend/Dockerfile
       target: development
     container_name: solidscheduler-dev-frontend
     restart: unless-stopped
     ports: ["3000:3000"]
     volumes:
-      - ./proton-scheduler-frontend/src:/workspace/proton-scheduler-frontend/src:ro
-      - ./proton-scheduler-frontend/index.html:/workspace/proton-scheduler-frontend/index.html:ro
+      - ./solid-scheduler-frontend/src:/workspace/solid-scheduler-frontend/src:ro
+      - ./solid-scheduler-frontend/index.html:/workspace/solid-scheduler-frontend/index.html:ro
     environment:
       - VITE_PROXY_TARGET=http://backend:3001
     depends_on: [backend]
@@ -33,14 +33,14 @@ services:
   backend:
     dns: [8.8.8.8, 1.1.1.1]
     build:
-      context: ./proton-scheduler-backend
+      context: ./solid-scheduler-backend
       target: development
     container_name: solidscheduler-dev-backend
     restart: unless-stopped
     env_file: .env
     ports: ["3001:3001"]
     volumes:
-      - ./proton-scheduler-backend/src:/app/src:ro
+      - ./solid-scheduler-backend/src:/app/src:ro
       - dev-data:/data
     depends_on: [redis]
     networks: [dev]

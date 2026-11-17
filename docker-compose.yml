@@ -21,7 +21,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: proton-scheduler-frontend/Dockerfile
+      dockerfile: solid-scheduler-frontend/Dockerfile
       target: production
     container_name: solidscheduler-frontend
     restart: unless-stopped
@@ -35,7 +35,7 @@ services:
   # -- Backend (Express API) --
   backend:
     build:
-      context: ./proton-scheduler-backend
+      context: ./solid-scheduler-backend
     container_name: solidscheduler-backend
     restart: unless-stopped
     env_file: .env

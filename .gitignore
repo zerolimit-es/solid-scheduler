@@ -14,7 +14,7 @@ node_modules/
 data/
 
 # Build output
-proton-scheduler-frontend/dist/
+solid-scheduler-frontend/dist/
 staging-dist/
 
 # Deploy state

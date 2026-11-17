@@ -59,7 +59,7 @@ start_dev() {
 
 start_prod() {
     log_info "Building frontend..."
-    cd proton-scheduler-frontend && npm ci && rm -rf dist && npm run build && cd ..
+    cd solid-scheduler-frontend && npm ci && rm -rf dist && npm run build && cd ..
 
     log_info "Starting SolidScheduler in PRODUCTION mode..."
     docker compose up -d --build

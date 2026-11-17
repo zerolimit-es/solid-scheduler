@@ -15,7 +15,7 @@ A privacy-first scheduling API built on [Solid](https://solidproject.org/) using
 ## Quick Start
 
 ```bash
-cd proton-scheduler-backend
+cd solid-scheduler-backend
 cp .env.example .env   # Edit with your settings
 npm install
 npm run dev            # Start with file watching
@@ -42,7 +42,7 @@ SMTP_PASS=your-password
 ## Project Structure
 
 ```
-proton-scheduler-backend/
+solid-scheduler-backend/
 ├── src/
 │   ├── config/index.js        # Configuration
 │   ├── middleware/
