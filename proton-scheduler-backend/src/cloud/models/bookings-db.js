@@ -82,8 +82,8 @@ export function createBooking(booking) {
   db.prepare(`
     INSERT INTO bookings (id, slug, title, start_time, end_time, organizer_name, organizer_email,
       attendee_name, attendee_email, notes, location, status, ics_content, synced_to_pod,
-      assigned_member_id, assigned_member_name, assigned_member_email, recurrence)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+      recurrence)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
   `).run(
     booking.id, booking.slug, booking.title,
     booking.start, booking.end,
@@ -91,9 +91,6 @@ export function createBooking(booking) {
     booking.attendeeName, booking.attendeeEmail,
     booking.notes || '', booking.location || 'Video Call',
     'confirmed', booking.icsContent || '',
-    booking.assignedMemberId || null,
-    booking.assignedMemberName || null,
-    booking.assignedMemberEmail || null,
     booking.recurrence || null,
   );
   return booking;
@@ -354,86 +351,6 @@ export function getBookingStats(slug, periods) {
   };
 }
 
-// ── Analytics queries (Business tier) ──────────────────────────────────
-export function getAnalyticsOverview(slug, from, to) {
-  const db = getDb();
-  const total = db.prepare(
-    `SELECT COUNT(*) as c FROM bookings WHERE slug = ? AND created_at >= ? AND created_at <= ?`
-  ).get(slug, from, to).c;
-  const confirmed = db.prepare(
-    `SELECT COUNT(*) as c FROM bookings WHERE slug = ? AND created_at >= ? AND created_at <= ? AND status = 'confirmed'`
-  ).get(slug, from, to).c;
-  const cancelled = db.prepare(
-    `SELECT COUNT(*) as c FROM bookings WHERE slug = ? AND created_at >= ? AND created_at <= ? AND status = 'cancelled'`
-  ).get(slug, from, to).c;
-
-  const now = new Date();
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay());
-  const weekStr = `${startOfWeek.getFullYear()}-${String(startOfWeek.getMonth() + 1).padStart(2, '0')}-${String(startOfWeek.getDate()).padStart(2, '0')}`;
-  const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-
-  const thisWeek = db.prepare(
-    `SELECT COUNT(*) as c FROM bookings WHERE slug = ? AND start_time >= ? AND status = 'confirmed'`
-  ).get(slug, weekStr).c;
-  const thisMonth = db.prepare(
-    `SELECT COUNT(*) as c FROM bookings WHERE slug = ? AND start_time >= ? AND status = 'confirmed'`
-  ).get(slug, monthStr).c;
-
-  return { total, confirmed, cancelled, thisWeek, thisMonth };
-}
-
-export function getBookingsOverTime(slug, from, to) {
-  const db = getDb();
-  return db.prepare(`
-    SELECT DATE(start_time) as date, COUNT(*) as count
-    FROM bookings WHERE slug = ? AND start_time >= ? AND start_time <= ?
-    GROUP BY DATE(start_time) ORDER BY date ASC
-  `).all(slug, from, to);
-}
-
-export function getPeakHours(slug, from, to) {
-  const db = getDb();
-  return db.prepare(`
-    SELECT CAST(strftime('%H', start_time) AS INTEGER) as hour, COUNT(*) as count
-    FROM bookings WHERE slug = ? AND start_time >= ? AND start_time <= ? AND status = 'confirmed'
-    GROUP BY hour ORDER BY hour ASC
-  `).all(slug, from, to);
-}
-
-export function getPeakDays(slug, from, to) {
-  const db = getDb();
-  return db.prepare(`
-    SELECT CAST(strftime('%w', start_time) AS INTEGER) as dayOfWeek, COUNT(*) as count
-    FROM bookings WHERE slug = ? AND start_time >= ? AND start_time <= ? AND status = 'confirmed'
-    GROUP BY dayOfWeek ORDER BY dayOfWeek ASC
-  `).all(slug, from, to);
-}
-
-export function getTeamUtilization(slug, from, to) {
-  const db = getDb();
-  return db.prepare(`
-    SELECT assigned_member_id as memberId, assigned_member_name as memberName, COUNT(*) as count
-    FROM bookings WHERE slug = ? AND start_time >= ? AND start_time <= ? AND status = 'confirmed'
-      AND assigned_member_id IS NOT NULL
-    GROUP BY assigned_member_id, assigned_member_name ORDER BY count DESC
-  `).all(slug, from, to);
-}
-
-export function getRecentBookings(slug, limit = 10) {
-  const db = getDb();
-  return db.prepare(`
-    SELECT id, title, start_time, end_time, attendee_name, attendee_email, status,
-           assigned_member_name, created_at
-    FROM bookings WHERE slug = ? ORDER BY created_at DESC LIMIT ?
-  `).all(slug, limit);
-}
-
-/**
- * Times taken on one day of a booking page: its bookings that day, plus the
- * occurrences of its recurring bookings that fall on it.
- * @returns {Array<{ start_time: string, end_time: string }>} naive times
- */
 export function getBookedSlots(slug, date) {
   const db = getDb();
   const single = db.prepare(
@@ -454,70 +371,4 @@ export function cancelBooking(id) {
 export function getBookingById(id) {
   const db = getDb();
   return db.prepare(`SELECT * FROM bookings WHERE id = ?`).get(id);
-}
-
-export function deleteSyncedBookings(slug, olderThanDays = 30) {
-  const db = getDb();
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - olderThanDays);
-  const cutoffStr = cutoff.toISOString();
-  db.prepare(
-    `DELETE FROM bookings WHERE slug = ? AND synced_to_pod = 1 AND created_at < ?`
-  ).run(slug, cutoffStr);
-}
-
-// Clear old synced bookings (older than N days)
-export function clearSyncedBookings(daysOld = 30) {
-  if (daysOld === 0) {
-    const db = getDb();
-    const count = db.prepare('SELECT COUNT(*) as count FROM bookings WHERE synced_to_pod = 1').get();
-    const result = db.prepare('DELETE FROM bookings WHERE synced_to_pod = 1').run();
-    return { deleted: result.changes, cutoffDate: 'all', eligible: count.count };
-  }
-  const db = getDb();
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - daysOld);
-  const cutoffStr = cutoff.toISOString().split('T')[0];
-  
-  const count = db.prepare(`
-    SELECT COUNT(*) as count FROM bookings 
-    WHERE synced_to_pod = 1 AND start_time < ?
-  `).get(cutoffStr);
-  
-  const result = db.prepare(`
-    DELETE FROM bookings 
-    WHERE synced_to_pod = 1 AND start_time < ?
-  `).run(cutoffStr);
-  
-  return { deleted: result.changes, cutoffDate: cutoffStr, eligible: count.count };
-}
-
-// Get cleanup stats
-export function getCleanupStats() {
-  const db = getDb();
-  const total = db.prepare('SELECT COUNT(*) as count FROM bookings').get();
-  const synced = db.prepare('SELECT COUNT(*) as count FROM bookings WHERE synced_to_pod = 1').get();
-  const unsynced = db.prepare('SELECT COUNT(*) as count FROM bookings WHERE synced_to_pod = 0').get();
-  const oldSynced30 = db.prepare(`
-    SELECT COUNT(*) as count FROM bookings 
-    WHERE synced_to_pod = 1 AND start_time < date('now', '-30 days')
-  `).get();
-  const oldSynced7 = db.prepare(`
-    SELECT COUNT(*) as count FROM bookings 
-    WHERE synced_to_pod = 1 AND start_time < date('now', '-7 days')
-  `).get();
-  const dbSize = db.prepare("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()").get();
-  const slugBreakdown = db.prepare(
-    `SELECT slug, synced_to_pod, COUNT(*) as count FROM bookings GROUP BY slug, synced_to_pod ORDER BY slug`
-  ).all();
-
-  return {
-    total: total.count,
-    synced: synced.count,
-    unsynced: unsynced.count,
-    clearable7: oldSynced7.count,
-    clearable30: oldSynced30.count,
-    dbSizeBytes: dbSize.size,
-    slugs: slugBreakdown,
-  };
 }

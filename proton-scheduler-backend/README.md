@@ -68,9 +68,9 @@ proton-scheduler-backend/
 │   │   ├── rdf.js             # RDF vocabularies
 │   │   └── webid.js           # WebID parsing
 │   ├── cloud/
-│   │   ├── config/tiers.js    # Feature limits (all unlocked in self-hosted)
+│   │   ├── middleware/        # Account (tenant) for the signed-in user
 │   │   ├── models/            # SQLite data layer + migrations
-│   │   └── services/          # Email templates, Pod sync
+│   │   └── services/          # Email templates, Pod sync, accounts
 │   └── server.js              # Express app entry point
 ├── tests/
 │   ├── smoke-test.sh          # HTTP endpoint smoke test
