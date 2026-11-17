@@ -365,4 +365,28 @@ describe('booking slug ownership', () => {
     assert.equal((await saveSlug(mia, 'orphaned-page')).status, 409);
     assert.equal(await bookingCount(mia), 0);
   });
+
+  it('normalises a new booking link, returns it, and lists it with the settings', async () => {
+    const leo = await signIn(LEO);
+    const res = await saveSlug(leo, 'Leo Meetings!');
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).bookingSlug, 'leo-meetings');
+    const avail = await (await leo('/api/availability')).json();
+    assert.equal(avail.availability.bookingSlug, 'leo-meetings');
+  });
+
+  it('refuses a booking link with no letters or digits, and keeps the old one', async () => {
+    const leo = await signIn(LEO);
+    const res = await saveSlug(leo, '!!!');
+    assert.equal(res.status, 400);
+    const avail = await (await leo('/api/availability')).json();
+    assert.equal(avail.availability.bookingSlug, 'leo-meetings');
+  });
+
+  it('gives a new account its booking link before anything is saved', async () => {
+    const nora = await signIn('https://nora.solidcommunity.net/profile/card#me');
+    const avail = await (await nora('/api/availability')).json();
+    assert.equal(avail.configured, false);
+    assert.ok(avail.bookingSlug, 'the account already has a booking link');
+  });
 });

@@ -8,17 +8,24 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import dns from 'node:dns/promises';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'solid-scheduler-auth-test-'));
 process.env.DB_PATH = path.join(tmpDir, 'test.db');
 process.env.FRONTEND_URL = 'http://frontend.test';
 delete process.env.DB_ENCRYPTION_KEY;
 
+// The hosts below are stand-ins and the tests make no real requests. The
+// server only contacts public addresses, so have every name resolve to one.
+dns.lookup = async () => [{ address: '93.184.216.34', family: 4 }];
+
 const VICTIM = 'https://victim.example/profile/card#me';
 const realFetch = globalThis.fetch;
 let server;
 let baseUrl;
 let sessionManager;
+let tokenWebId = VICTIM;
+let profileFetches = [];
 
 before(async () => {
   const express = (await import('express')).default;
@@ -28,6 +35,7 @@ before(async () => {
 
   // Public WebID profile: the victim trusts only the real IdP.
   globalThis.fetch = async (url, init) => {
+    profileFetches.push(String(url));
     if (String(url).startsWith('https://victim.example/')) {
       return new Response(
         `<${VICTIM}> <http://www.w3.org/ns/solid/terms#oidcIssuer> <https://real-idp.example/> .`,
@@ -40,8 +48,8 @@ before(async () => {
   // Stand in for the IdP round trip: the token says the user is VICTIM.
   sessionManager.handleCallback = async (session) => {
     session.info.isLoggedIn = true;
-    session.info.webId = VICTIM;
-    return { isLoggedIn: true, webId: VICTIM, sessionId: session.info.sessionId };
+    session.info.webId = tokenWebId;
+    return { isLoggedIn: true, webId: tokenWebId, sessionId: session.info.sessionId };
   };
   sessionManager.logout = async (session) => {
     session.info.isLoggedIn = false;
@@ -143,5 +151,36 @@ describe('MFA skip is bound to the account that passed it (#73)', () => {
   it('still skips it on a reconnect by the same account', async () => {
     const { location } = await callback('https://real-idp.example', { mfaVerifiedWebId: VICTIM });
     assert.equal(new URL(location).searchParams.get('login'), 'success');
+  });
+});
+
+describe('addresses on the server\'s own network', () => {
+  it('refuses to start a sign-in with an identity provider on a private address', async () => {
+    const res = await realFetch(
+      `${baseUrl}/api/auth/login?oidcIssuer=${encodeURIComponent('http://169.254.169.254/')}`,
+      { redirect: 'manual' }
+    );
+    const url = new URL(res.headers.get('location'));
+    assert.equal(url.origin, 'http://frontend.test');
+    assert.equal(url.searchParams.get('login'), 'error');
+  });
+
+  it("doesn't fetch a WebID profile on a private address", async () => {
+    tokenWebId = 'http://10.0.0.5/profile/card#me';
+    profileFetches = [];
+    try {
+      const { location, session } = await callback('https://real-idp.example');
+      assert.equal(new URL(location).searchParams.get('login'), 'failed');
+      assert.equal(session.webId, undefined);
+      assert.deepEqual(profileFetches, []);
+    } finally {
+      tokenWebId = VICTIM;
+    }
+  });
+
+  it("refuses Pod requests to a private address from any Solid session", async () => {
+    const session = sessionManager.createFreshSession();
+    await assert.rejects(session.fetch('http://169.254.169.254/latest/meta-data/'), { name: 'NonPublicHostError' });
+    await assert.rejects(session.fetch('http://127.0.0.1:6379/'), { name: 'NonPublicHostError' });
   });
 });

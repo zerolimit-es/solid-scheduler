@@ -17,6 +17,7 @@ import {
   requireAuth as _requireAuth,
 } from '@zerolimit/packages/solid-auth/express';
 import { getRedis } from '../services/redis.js';
+import { hostPolicy } from '../services/host-policy.js';
 
 // ── Storage setup ───────────────────────────────────────────────────────────
 // Redis-backed with in-memory fallback (same strategy as before)
@@ -64,6 +65,26 @@ export const sessionManager = new SolidSessionManager({
   storage: buildStorage(),
   clientName: 'SolidScheduler',
 });
+
+// Every request a Solid session sends goes through the host policy: a user's
+// WebID profile names their Pods, and nothing stops it from naming an
+// address on the server's own network. Wrapping the session's fetch here
+// covers Pod discovery, Pod reads and writes, and background sync alike.
+const guardedSessions = new WeakSet();
+function guardSession(session) {
+  if (session && typeof session.fetch === 'function' && !guardedSessions.has(session)) {
+    session.fetch = hostPolicy.guardFetch(session.fetch);
+    guardedSessions.add(session);
+  }
+  return session;
+}
+for (const method of ['createFreshSession', 'getSession', 'restoreSession']) {
+  const original = sessionManager[method].bind(sessionManager);
+  sessionManager[method] = (...args) => {
+    const result = original(...args);
+    return result && typeof result.then === 'function' ? result.then(guardSession) : guardSession(result);
+  };
+}
 
 // Re-export the fetchMap so sync.js and other modules can access it
 export const solidFetchMap = sessionManager.fetchMap;

@@ -5,13 +5,15 @@ import { AlertTriangle, Check } from 'lucide-react';
 import CalendarFeedCard from './CalendarFeedCard';
 import SecurityCard from './SecurityCard';
 import BlockedTimeCard from './BlockedTimeCard';
+import SettingsCard from './SettingsCard';
 
 export default function DashboardView({
-  user, availability, bookings, setBookings, stats, podStatus,
+  availability, bookings, setBookings, stats, podStatus,
   linkCopied, setLinkCopied, saving, saved,
-  handleSaveAvailability, setAvailability, setError,
+  handleSaveAvailability, savedAvailability, handleSaveSettings, setAvailability, setError,
 }) {
-  const slug = user?.bookingSlug || availability?.bookingSlug || null;
+  // The saved link, not one being typed into the settings card
+  const slug = savedAvailability?.bookingSlug || null;
   const [cancellingId, setCancellingId] = React.useState(null);
 
   const handleCancel = async (bookingId) => {
@@ -184,6 +186,9 @@ export default function DashboardView({
             </button>
           </div>
         </div>
+
+        {/* Name, email, meeting length, timezone, booking link */}
+        {savedAvailability && <SettingsCard availability={savedAvailability} onSave={handleSaveSettings} />}
 
         {/* Blocked time: calendar events that hide booking slots */}
         <BlockedTimeCard />

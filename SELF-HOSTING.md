@@ -223,7 +223,7 @@ CALDAV_BOOKING_SLUG=your-booking-slug
 | `SMTP_FROM_NAME` | No | `SolidScheduler` | Sender name shown in mail clients |
 | `ORGANIZER_NAME` | No | — | Name used on bookings for accounts that have not saved one in their settings |
 | `ORGANIZER_EMAIL` | No | — | Where booking notifications go for accounts that have not saved an email |
-| `ALLOW_PRIVATE_POD_HOSTS` | No | `false` | Allow users to set a Pod URL on a private network address (a Pod server on your own LAN) |
+| `ALLOW_PRIVATE_POD_HOSTS` | No | `false` | Let the server contact private network addresses (a Pod server or identity provider on your own LAN) for Pods, WebIDs and sign-in. Without it only public addresses are contacted, plus the host of `DEFAULT_SOLID_IDP` |
 | `CALDAV_ENABLED` | No | `false` | Enable CalDAV calendar sync |
 | `CALDAV_SERVER_URL` | With CalDAV | — | URL of the calendar (CalDAV collection) to copy bookings to |
 | `CALDAV_USERNAME` | With CalDAV | — | CalDAV username |

@@ -96,7 +96,9 @@ export async function apiFetch(endpoint, options = {}) {
 
     const data = await response.json();
     if (!response.ok) {
-      throw new ApiError(data.message || data.error || 'Request failed', response.status, data);
+      // A validation error names what is wrong with each field
+      const fieldErrors = data.fields && typeof data.fields === 'object' ? Object.values(data.fields).join(' ') : '';
+      throw new ApiError(fieldErrors || data.message || data.error || 'Request failed', response.status, data);
     }
     return data;
   } catch (error) {
