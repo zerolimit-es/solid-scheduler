@@ -172,6 +172,9 @@ CALDAV_BOOKING_SLUG=your-booking-slug
 
 - `CALDAV_SERVER_URL` is the URL of the calendar itself (a CalDAV collection), not the server's root.
 - `CALDAV_BOOKING_SLUG` is the last part of your booking link: for `https://your-domain.com/book/alice`, it's `alice`.
+- The setting is tied to the account that holds that link the first time a booking is synced. If that account later renames its booking link, its bookings keep syncing and you do not need to change `.env`. If someone else then takes the old link, their bookings are not sent.
+- To sync a different account, set `CALDAV_BOOKING_SLUG` to that account's current link and restart.
+- A sync that fails because the calendar server is unreachable or busy is retried twice (after 2 and 15 seconds). A refusal such as a wrong password is not retried; check the backend logs.
 - Use `https://`. A plain `http://` URL works (useful for a server on your own network), but sends the password unencrypted; the backend logs a warning.
 
 ### Nextcloud setup (~5 minutes)

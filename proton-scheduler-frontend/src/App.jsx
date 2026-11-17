@@ -35,6 +35,7 @@ export default function ProtonScheduler() {
     return null;
   });
   const [publicProfile, setPublicProfile] = useState(null);
+  const [publicNotFound, setPublicNotFound] = useState(false);
 
   // ── Auth ───────────────────────────────────────────────────────────────
   const {
@@ -96,7 +97,11 @@ export default function ProtonScheduler() {
   useEffect(() => {
     if (!publicSlug) return;
     fetch(`/api/public/${publicSlug}`)
-      .then(r => r.ok ? r.json() : null)
+      .then(r => {
+        // No account holds this booking link
+        if (r.status === 404) setPublicNotFound(true);
+        return r.ok ? r.json() : null;
+      })
       .then(data => {
         if (data) {
           setPublicProfile(data);
@@ -256,7 +261,7 @@ export default function ProtonScheduler() {
             <div className="flex-1" />
             <div className="flex items-center gap-3">
               <span className="font-display text-lg font-bold bg-gradient-to-br from-user-primary to-user-light bg-clip-text text-transparent">
-                {publicProfile?.profile?.name || 'ProtonScheduler'}
+                {publicProfile?.profile?.name || 'SolidScheduler'}
               </span>
             </div>
             <div className="flex-1 flex justify-end">
@@ -275,6 +280,15 @@ export default function ProtonScheduler() {
               <AlertIcon style={{ width: 18, height: 18 }} />
               <span>{error}</span>
               <button className="ml-auto bg-none border-none text-[var(--color-error)] cursor-pointer text-xl leading-none" onClick={() => setError(null)}>×</button>
+            </div>
+          )}
+
+          {publicNotFound && (
+            <div className="max-w-[480px] mx-auto text-center py-16">
+              <h2 className="text-[1.375rem] font-bold text-[var(--user-text)] m-0 mb-2">Booking page not found</h2>
+              <p className="text-sm text-[var(--user-text-muted)] m-0">
+                There is no booking page at this address. Check the link, or ask the person who sent it for a new one.
+              </p>
             </div>
           )}
 

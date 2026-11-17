@@ -9,14 +9,28 @@
  *
  * Each booking is one calendar object resource, `<collection>/<id>.ics`:
  * created with PUT, removed with DELETE (RFC 4791). Sync runs in the
- * background and never fails or delays the booking itself.
+ * background and never fails or delays the booking itself. A request that
+ * fails for a passing reason (network error, server error, rate limit) is
+ * retried a few times.
+ *
+ * CALDAV_BOOKING_SLUG names the account by its booking link, but a link can
+ * be renamed. So the first time it is used, the setting is bound to the
+ * account that holds that link, and from then on that account's bookings are
+ * synced under whatever link it has. If the account gives the link up and
+ * someone else takes it, their bookings are not sent.
  */
 
 import config from '../config/index.js';
 import { buildRRule } from '../utils/rrule.js';
 import { naiveLocalToISO } from '../cloud/services/pod-sync.js';
+import { getTenantBySlug, getAdminSetting, setAdminSetting } from '../cloud/models/database.js';
 
 const REQUEST_TIMEOUT_MS = 10_000;
+/** Waits before the second and third attempt of a failed request. */
+const RETRY_DELAYS_MS = [2_000, 15_000];
+
+/** A failure worth trying again: the server or the network, not the request. */
+class RetryableError extends Error {}
 
 /**
  * Validate and normalise the operator's settings.
@@ -151,6 +165,8 @@ export function naiveToISO(naive, timezone) {
  * @param {object} [options.settings] Raw settings (defaults to config.caldav)
  * @param {typeof fetch} [options.fetch]
  * @param {Console} [options.logger]
+ * @param {object} [options.accounts] Account lookup and binding store (see caldav()); without it the booking link alone decides
+ * @param {number[]} [options.retryDelays] Waits in ms before each retry
  */
 export function createCaldavSync(options = {}) {
   const resolved = resolveSettings(options.settings ?? config.caldav);
@@ -165,9 +181,35 @@ export function createCaldavSync(options = {}) {
   }
 
   const settings = resolved.ok ? resolved.settings : null;
+  const accounts = options.accounts ?? null;
+  const retryDelays = options.retryDelays ?? RETRY_DELAYS_MS;
+  const wait = options.wait ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+
+  /**
+   * The account the setting is bound to: the one holding the configured
+   * booking link when it was first seen. Null until such an account exists.
+   */
+  function boundAccount() {
+    const key = `caldav_account:${settings.bookingSlug}`;
+    const bound = accounts.getBinding(key);
+    if (bound) return bound;
+    const holder = accounts.accountForSlug(settings.bookingSlug);
+    if (holder) accounts.setBinding(key, holder);
+    return holder || null;
+  }
 
   function appliesTo(slug) {
-    return !!settings && typeof slug === 'string' && slug.toLowerCase() === settings.bookingSlug;
+    if (!settings || typeof slug !== 'string') return false;
+    const sameLink = slug.toLowerCase() === settings.bookingSlug;
+    if (!accounts) return sameLink;
+    try {
+      const bound = boundAccount();
+      return !!bound && accounts.accountForSlug(slug.toLowerCase()) === bound;
+    } catch (err) {
+      // Cannot tell which account this is: sync nothing rather than the wrong account's bookings
+      logger.warn(`[CalDAV] Could not check the synced account: ${err.message}`);
+      return false;
+    }
   }
 
   function request(method, bookingId, body) {
@@ -184,21 +226,42 @@ export function createCaldavSync(options = {}) {
     });
   }
 
+  /** One request; throws RetryableError for failures that may pass. */
+  async function attempt(method, bookingId, body) {
+    let res;
+    try {
+      res = await request(method, bookingId, body);
+    } catch (err) {
+      throw new RetryableError(`${method} ${resourceName(bookingId)} failed: ${err.message}`);
+    }
+    if (res.ok || (method === 'DELETE' && res.status === 404)) return;
+    const message = `${method} ${resourceName(bookingId)} failed: HTTP ${res.status}`;
+    throw res.status >= 500 || res.status === 429 || res.status === 408 ? new RetryableError(message) : new Error(message);
+  }
+
+  /** A request with retries for passing failures. */
+  async function send(method, bookingId, body) {
+    for (let tries = 0; ; tries++) {
+      try {
+        return await attempt(method, bookingId, body);
+      } catch (err) {
+        if (!(err instanceof RetryableError) || tries >= retryDelays.length) throw err;
+        await wait(retryDelays[tries]);
+      }
+    }
+  }
+
   /** Create or replace the event for a booking. Resolves to true when written. */
   async function putBooking(slug, booking) {
     if (!appliesTo(slug)) return false;
-    const res = await request('PUT', booking.id, buildEventICS(booking));
-    if (!res.ok) throw new Error(`PUT ${resourceName(booking.id)} failed: HTTP ${res.status}`);
+    await send('PUT', booking.id, buildEventICS(booking));
     return true;
   }
 
   /** Remove the event for a booking. A missing event counts as removed. */
   async function deleteBooking(slug, bookingId) {
     if (!appliesTo(slug)) return false;
-    const res = await request('DELETE', bookingId);
-    if (!res.ok && res.status !== 404) {
-      throw new Error(`DELETE ${resourceName(bookingId)} failed: HTTP ${res.status}`);
-    }
+    await send('DELETE', bookingId);
     return true;
   }
 
@@ -223,6 +286,13 @@ export function createCaldavSync(options = {}) {
 let defaultSync;
 /** The instance configured from .env, created on first use. */
 export function caldav() {
-  defaultSync ??= createCaldavSync();
+  defaultSync ??= createCaldavSync({
+    // Which account holds a booking link, and where the binding is remembered
+    accounts: {
+      accountForSlug: (slug) => getTenantBySlug(slug)?.id ?? null,
+      getBinding: (key) => getAdminSetting(key),
+      setBinding: (key, accountId) => setAdminSetting(key, accountId),
+    },
+  });
   return defaultSync;
 }

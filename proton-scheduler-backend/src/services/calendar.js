@@ -18,6 +18,7 @@ import {
   RECURRENCE_PRESETS,
 } from '../utils/recurrence.js';
 import { SCHEMA } from '../utils/rdf.js';
+import { currentPeriods, naiveToInstant } from '../utils/tz.js';
 
 /**
  * Day name to JavaScript Date.getDay() index
@@ -273,6 +274,8 @@ export async function createBooking(params, options = {}) {
   // Save to Pod
   const bookingUrl = await solidService.saveBooking(podUrl, booking, fetch);
   booking.url = bookingUrl;
+  // Emails and the invitation show times in the account's timezone
+  booking.timezone = availability.timezone || null;
   
   // Send confirmation emails
   if (!options.skipEmail) {
@@ -286,8 +289,10 @@ export async function createBooking(params, options = {}) {
       await emailService.sendBookingConfirmation(emailBooking);
       booking.confirmationSent = true;
       
-      // Update booking with confirmation status
-      await solidService.saveBooking(podUrl, { ...booking, confirmationSent: true }, fetch);
+      // Record that the confirmation went out. (Saving the booking again
+      // would not: an existing booking file is never overwritten.)
+      await solidService.markConfirmationSent(bookingUrl, fetch)
+        .catch((err) => console.warn('Could not record confirmation status:', err.message));
     } catch (emailError) {
       console.error('Failed to send confirmation email:', emailError.message);
       // Don't fail the booking if email fails
@@ -295,7 +300,6 @@ export async function createBooking(params, options = {}) {
   }
   
   // Generate ICS content (includes RRULE for recurring events)
-  booking.timezone = availability.timezone || null;
   booking.icsContent = generateICS({
     title: booking.title,
     start: booking.start,
@@ -349,6 +353,7 @@ export async function cancelBookingById(podUrl, bookingId, fetch, options = {}) 
         }, {
           reason: options.reason || 'This occurrence has been cancelled',
           cancelledBy: options.cancelledBy || 'the organizer',
+          timezone: options.timezone,
         });
       } catch (emailError) {
         console.error('Failed to send cancellation email:', emailError.message);
@@ -367,6 +372,7 @@ export async function cancelBookingById(podUrl, bookingId, fetch, options = {}) 
       await emailService.sendCancellationNotice(booking, {
         reason: options.reason,
         cancelledBy: options.cancelledBy || 'the organizer',
+        timezone: options.timezone,
       });
     } catch (emailError) {
       console.error('Failed to send cancellation email:', emailError.message);
@@ -437,10 +443,12 @@ export async function updateRecurringBooking(podUrl, bookingId, updates, fetch, 
   }
   
   if (!booking.isRecurring) {
-    // Non-recurring: just update normally
-    const updatedBooking = { ...booking, ...updates };
-    await solidService.saveBooking(podUrl, updatedBooking, fetch);
-    return updatedBooking;
+    // A one-off booking: change its title, description and location in
+    // place. (Saving it again would do nothing: an existing booking file is
+    // never overwritten. And a one-off booking has no recurrence to change.)
+    const { recurrence: _ignored, ...details } = updates;
+    await solidService.updateBookingDetails(booking.url, details, fetch);
+    return { ...booking, ...details };
   }
   
   if (options.scope === 'all') {
@@ -498,24 +506,50 @@ export async function getUpcomingBookings(podUrl, fetch, limit = 10, { timezone 
 }
 
 /**
- * Get booking statistics
+ * Get booking statistics from the Pod.
+ *
+ * "This week" and "this month" count meetings that take place in the
+ * current week and month in the account's timezone (every occurrence of a
+ * recurring booking); "upcoming" counts bookings still to come (a series
+ * once). The local statistics in bookings-db.js use the same definitions.
+ *
  * @param {string} podUrl - User's Pod URL
  * @param {Function} fetch - Authenticated fetch
+ * @param {{ timezone?: string }} [options]
  */
-export async function getBookingStats(podUrl, fetch) {
+export async function getBookingStats(podUrl, fetch, { timezone = 'UTC' } = {}) {
+  const periods = currentPeriods(timezone);
+  const instant = (naive) => naiveToInstant(naive, timezone);
   const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  
-  const allBookings = await solidService.loadBookings(podUrl, fetch);
-  const activeBookings = allBookings.filter(b => b.status !== SCHEMA.EventCancelled);
-  
+
+  const allBookings = await solidService.loadBookings(podUrl, fetch, { includeCancelled: true });
+  const active = allBookings.filter(b => b.status !== SCHEMA.EventCancelled);
+
+  /** Meetings (occurrences) starting within [from, to). */
+  const startingBetween = (from, to) => active.reduce((sum, booking) => {
+    if (booking.isRecurring && booking.recurrence) {
+      return sum + expandRecurringEvent(booking, { rangeStart: from, rangeEnd: to, maxOccurrences: 400, timezone })
+        .filter(o => o.start < to).length;
+    }
+    return sum + (booking.start >= from && booking.start < to ? 1 : 0);
+  }, 0);
+
+  const upcoming = active.filter((booking) => {
+    if (!(booking.isRecurring && booking.recurrence)) return booking.start >= now;
+    return expandRecurringEvent(booking, {
+      rangeStart: now,
+      rangeEnd: new Date(now.getTime() + 10 * 366 * 24 * 60 * 60 * 1000),
+      maxOccurrences: 1,
+      timezone,
+    }).length > 0;
+  }).length;
+
   return {
-    total: activeBookings.length,
-    thisWeek: activeBookings.filter(b => new Date(b.createdAt) >= weekAgo).length,
-    thisMonth: activeBookings.filter(b => new Date(b.createdAt) >= monthAgo).length,
-    upcoming: activeBookings.filter(b => new Date(b.start) >= now).length,
-    cancelled: allBookings.filter(b => b.status === SCHEMA.EventCancelled).length,
+    total: active.length,
+    thisWeek: startingBetween(instant(periods.weekStart), instant(periods.weekEnd)),
+    thisMonth: startingBetween(instant(periods.monthStart), instant(periods.monthEnd)),
+    upcoming,
+    cancelled: allBookings.length - active.length,
   };
 }
 

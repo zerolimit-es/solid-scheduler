@@ -9,6 +9,20 @@
 import nodemailer from 'nodemailer';
 import config from '../config/index.js';
 import { generateICS, generateCancellationICS } from '../utils/ics.js';
+import { escapeHtml as esc, singleLine } from '../utils/html.js';
+import { isValidTimeZone } from '../utils/tz.js';
+
+/**
+ * The timezone to show times in: the booking's own (the account's), else
+ * one passed by the caller, else UTC. Never the server's, which is not
+ * where either the organizer or the attendee is.
+ */
+function displayTimeZone(booking, options = {}) {
+  for (const tz of [booking?.timezone, options?.timezone]) {
+    if (isValidTimeZone(tz)) return tz;
+  }
+  return 'UTC';
+}
 
 // Create reusable transporter
 let transporter = null;
@@ -75,6 +89,7 @@ export async function sendBookingConfirmation(booking, options = {}) {
   
   const formatDateTime = (date) => {
     return new Date(date).toLocaleString('en-US', {
+      timeZone: displayTimeZone(booking, options),
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -89,7 +104,7 @@ export async function sendBookingConfirmation(booking, options = {}) {
   const attendeeEmail = {
     from: `"${config.email.fromName}" <${config.email.from}>`,
     to: booking.attendee.email,
-    subject: `Confirmed: ${booking.title} with ${booking.organizer.name}`,
+    subject: singleLine(`Confirmed: ${booking.title} with ${booking.organizer.name}`),
     text: `
 Your meeting has been confirmed!
 
@@ -124,16 +139,16 @@ Scheduled with SolidScheduler - Privacy-first scheduling
   <div class="container">
     <div class="header">
       <h1 style="margin: 0; font-size: 24px;">✓ Meeting Confirmed</h1>
-      <p style="margin: 10px 0 0 0; opacity: 0.9;">${booking.title}</p>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">${esc(booking.title)}</p>
     </div>
     <div class="content">
       <div class="detail-row">
         <span class="detail-label">With</span>
-        <span class="detail-value">${booking.organizer.name}</span>
+        <span class="detail-value">${esc(booking.organizer.name)}</span>
       </div>
       <div class="detail-row">
         <span class="detail-label">When</span>
-        <span class="detail-value">${formatDateTime(booking.start)}</span>
+        <span class="detail-value">${esc(formatDateTime(booking.start))}</span>
       </div>
       <div class="detail-row">
         <span class="detail-label">Duration</span>
@@ -142,13 +157,13 @@ Scheduled with SolidScheduler - Privacy-first scheduling
       ${booking.location ? `
       <div class="detail-row">
         <span class="detail-label">Location</span>
-        <span class="detail-value">${booking.location}</span>
+        <span class="detail-value">${esc(booking.location)}</span>
       </div>
       ` : ''}
       ${booking.notes ? `
       <div class="detail-row">
         <span class="detail-label">Notes</span>
-        <span class="detail-value">${booking.notes}</span>
+        <span class="detail-value">${esc(booking.notes)}</span>
       </div>
       ` : ''}
       <p style="margin-top: 20px;">
@@ -179,7 +194,7 @@ Scheduled with SolidScheduler - Privacy-first scheduling
   const organizerEmail = {
     from: `"${config.email.fromName}" <${config.email.from}>`,
     to: booking.organizer.email,
-    subject: `New Booking: ${booking.title} with ${booking.attendee.name}`,
+    subject: singleLine(`New Booking: ${booking.title} with ${booking.attendee.name}`),
     text: `
 You have a new booking!
 
@@ -213,16 +228,16 @@ Scheduled with SolidScheduler - Privacy-first scheduling
   <div class="container">
     <div class="header">
       <h1 style="margin: 0; font-size: 24px;">📅 New Booking</h1>
-      <p style="margin: 10px 0 0 0; opacity: 0.9;">${booking.title}</p>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">${esc(booking.title)}</p>
     </div>
     <div class="content">
       <div class="detail-row">
         <span class="detail-label">Attendee</span>
-        <span class="detail-value">${booking.attendee.name}<br><small>${booking.attendee.email}</small></span>
+        <span class="detail-value">${esc(booking.attendee.name)}<br><small>${esc(booking.attendee.email)}</small></span>
       </div>
       <div class="detail-row">
         <span class="detail-label">When</span>
-        <span class="detail-value">${formatDateTime(booking.start)}</span>
+        <span class="detail-value">${esc(formatDateTime(booking.start))}</span>
       </div>
       <div class="detail-row">
         <span class="detail-label">Duration</span>
@@ -231,11 +246,11 @@ Scheduled with SolidScheduler - Privacy-first scheduling
       ${booking.notes ? `
       <div class="detail-row">
         <span class="detail-label">Notes</span>
-        <span class="detail-value">${booking.notes}</span>
+        <span class="detail-value">${esc(booking.notes)}</span>
       </div>
       ` : ''}
       <p style="margin-top: 20px; color: #6c757d;">
-        ✓ A confirmation email with calendar invite has been sent to ${booking.attendee.email}
+        ✓ A confirmation email with calendar invite has been sent to ${esc(booking.attendee.email)}
       </p>
     </div>
     <div class="footer">
@@ -304,6 +319,7 @@ export async function sendCancellationNotice(booking, options = {}) {
   
   const formatDateTime = (date) => {
     return new Date(date).toLocaleString('en-US', {
+      timeZone: displayTimeZone(booking, options),
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -318,7 +334,7 @@ export async function sendCancellationNotice(booking, options = {}) {
   
   const emailContent = {
     from: `"${config.email.fromName}" <${config.email.from}>`,
-    subject: `Cancelled: ${booking.title}`,
+    subject: singleLine(`Cancelled: ${booking.title}`),
     text: `
 Meeting Cancelled
 
@@ -351,18 +367,18 @@ SolidScheduler - Privacy-first scheduling
   <div class="container">
     <div class="header">
       <h1 style="margin: 0; font-size: 24px;">✗ Meeting Cancelled</h1>
-      <p style="margin: 10px 0 0 0; opacity: 0.9;">${booking.title}</p>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">${esc(booking.title)}</p>
     </div>
     <div class="content">
-      <p>This meeting has been cancelled by ${cancelledBy}.</p>
+      <p>This meeting has been cancelled by ${esc(cancelledBy)}.</p>
       <div class="detail-row">
         <span class="detail-label">Was</span>
-        <span class="detail-value">${formatDateTime(booking.start)}</span>
+        <span class="detail-value">${esc(formatDateTime(booking.start))}</span>
       </div>
       ${cancellationReason !== 'This meeting has been cancelled.' ? `
       <div class="detail-row">
         <span class="detail-label">Reason</span>
-        <span class="detail-value" style="text-decoration: none;">${cancellationReason}</span>
+        <span class="detail-value" style="text-decoration: none;">${esc(cancellationReason)}</span>
       </div>
       ` : ''}
       <p style="margin-top: 20px; color: #6c757d;">
@@ -434,6 +450,7 @@ export async function sendReminder(booking, recipientType = 'attendee') {
   
   const formatDateTime = (date) => {
     return new Date(date).toLocaleString('en-US', {
+      timeZone: displayTimeZone(booking),
       weekday: 'long',
       month: 'long',
       day: 'numeric',
@@ -445,7 +462,7 @@ export async function sendReminder(booking, recipientType = 'attendee') {
   const email = {
     from: `"${config.email.fromName}" <${config.email.from}>`,
     to: recipient.email,
-    subject: `Reminder: ${booking.title} - ${formatDateTime(booking.start)}`,
+    subject: singleLine(`Reminder: ${booking.title} - ${formatDateTime(booking.start)}`),
     text: `
 Meeting Reminder
 
@@ -466,10 +483,10 @@ SolidScheduler - Privacy-first scheduling
   <div style="max-width: 600px; margin: 0 auto; background: #6366F1; padding: 2px; border-radius: 14px;">
     <div style="background: white; border-radius: 12px; padding: 30px;">
       <h2 style="color: #6366F1; margin-top: 0;">Meeting Reminder</h2>
-      <h3 style="margin-bottom: 5px;">${booking.title}</h3>
-      <p style="color: #666; margin-top: 5px;">with ${otherParty.name}</p>
-      <p style="font-size: 18px; color: #333;"><strong>${formatDateTime(booking.start)}</strong></p>
-      ${booking.location ? `<p>📍 ${booking.location}</p>` : ''}
+      <h3 style="margin-bottom: 5px;">${esc(booking.title)}</h3>
+      <p style="color: #666; margin-top: 5px;">with ${esc(otherParty.name)}</p>
+      <p style="font-size: 18px; color: #333;"><strong>${esc(formatDateTime(booking.start))}</strong></p>
+      ${booking.location ? `<p>📍 ${esc(booking.location)}</p>` : ''}
       <p style="text-align: center; color: #6c757d; font-size: 14px; margin-top: 20px;">🛡️ Scheduled with SolidScheduler · Privacy-first scheduling</p>
     </div>
   </div>
