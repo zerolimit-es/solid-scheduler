@@ -143,6 +143,7 @@ describe('createCaldavSync', () => {
       settings: SETTINGS,
       fetch: async () => { throw new Error('ECONNREFUSED'); },
       logger: { log() {}, warn: (m) => warnings.push(m), error() {} },
+      retryDelays: [],
     });
     assert.equal(await sync.bookingCreated('alice', BOOKING), false);
     assert.equal(await sync.bookingCancelled('alice', 'booking-123'), false);
@@ -155,3 +156,89 @@ describe('createCaldavSync', () => {
     assert.equal(resourceName('../../etc/passwd'), '.._.._etc_passwd.ics');
   });
 });
+
+describe('createCaldavSync: retries', () => {
+  /** A CalDAV server that answers with the given statuses in turn (an Error is a network failure). */
+  function flakyServer(...answers) {
+    const calls = [];
+    const fetch = async (url, init) => {
+      calls.push({ url, init });
+      const answer = answers[Math.min(calls.length - 1, answers.length - 1)];
+      if (answer instanceof Error) throw answer;
+      return new Response(null, { status: answer });
+    };
+    return { fetch, calls };
+  }
+  const waits = [];
+  const options = (fetch) => ({
+    settings: SETTINGS, fetch, logger: quietLogger, retryDelays: [10, 20],
+    wait: async (ms) => { waits.push(ms); },
+  });
+
+  it('tries again after a server error or a network failure, then succeeds', async () => {
+    waits.length = 0;
+    const { fetch, calls } = flakyServer(503, new Error('ECONNRESET'), 201);
+    assert.equal(await createCaldavSync(options(fetch)).bookingCreated('alice', BOOKING), true);
+    assert.equal(calls.length, 3);
+    assert.deepEqual(waits, [10, 20]);
+  });
+
+  it('gives up after the last retry', async () => {
+    const { fetch, calls } = flakyServer(500);
+    assert.equal(await createCaldavSync(options(fetch)).bookingCreated('alice', BOOKING), false);
+    assert.equal(calls.length, 3);
+  });
+
+  it('does not retry a request the server refuses (wrong password, bad request)', async () => {
+    const { fetch, calls } = flakyServer(401);
+    assert.equal(await createCaldavSync(options(fetch)).bookingCreated('alice', BOOKING), false);
+    assert.equal(calls.length, 1);
+  });
+});
+
+describe('createCaldavSync: bound to the account, not the link name', () => {
+  /** Accounts by booking link, and the remembered binding. */
+  function accountsStore(links) {
+    const bindings = new Map();
+    return {
+      links,
+      accountForSlug: (slug) => links[slug] ?? null,
+      getBinding: (key) => bindings.get(key) ?? null,
+      setBinding: (key, id) => bindings.set(key, id),
+    };
+  }
+
+  it('keeps syncing the same account after it renames its booking link', async () => {
+    const { fetch, calls } = recordingFetch();
+    const accounts = accountsStore({ alice: 'tenant-alice' });
+    const sync = createCaldavSync({ settings: SETTINGS, fetch, logger: quietLogger, accounts });
+    assert.equal(await sync.bookingCreated('alice', BOOKING), true);
+
+    // Alice renames her link; Mallory then takes the old one
+    delete accounts.links.alice;
+    accounts.links['alice-new'] = 'tenant-alice';
+    accounts.links.alice = 'tenant-mallory';
+
+    assert.equal(await sync.bookingCreated('alice-new', BOOKING), true, 'the bound account, under its new link');
+    assert.equal(await sync.bookingCreated('alice', BOOKING), false, 'the old link now belongs to someone else');
+    assert.equal(calls.length, 2);
+  });
+
+  it('syncs nothing until an account holds the configured link', async () => {
+    const { fetch, calls } = recordingFetch();
+    const accounts = accountsStore({ bob: 'tenant-bob' });
+    const sync = createCaldavSync({ settings: SETTINGS, fetch, logger: quietLogger, accounts });
+    assert.equal(await sync.bookingCreated('alice', BOOKING), false);
+    assert.equal(await sync.bookingCreated('bob', BOOKING), false);
+    assert.equal(calls.length, 0);
+  });
+
+  it('syncs nothing if the account cannot be checked', async () => {
+    const { fetch, calls } = recordingFetch();
+    const accounts = { accountForSlug: () => { throw new Error('db down'); }, getBinding: () => null, setBinding() {} };
+    const sync = createCaldavSync({ settings: SETTINGS, fetch, logger: quietLogger, accounts });
+    assert.equal(await sync.bookingCreated('alice', BOOKING), false);
+    assert.equal(calls.length, 0);
+  });
+});
+

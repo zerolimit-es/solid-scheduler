@@ -85,6 +85,25 @@ export function checkSlotConflict(podUrl, start, end, fetch, options = {}) {
   return _checkSlotConflict(podUrl, start, end, fetch, podPaths, options);
 }
 
+/**
+ * Change a booking's title, description or location in place. Works for
+ * one-off and recurring bookings alike.
+ */
+export function updateBookingDetails(bookingUrl, updates, fetch) {
+  return updateRecurringSeries(bookingUrl, updates, fetch);
+}
+
+/** Record in the Pod that a booking's confirmation email was sent. */
+export async function markConfirmationSent(bookingUrl, fetch) {
+  const dataset = await getSolidDataset(bookingUrl, { fetch });
+  let updated = dataset;
+  for (const thing of getThingAll(dataset)) {
+    if (getUrl(thing, `${SCHEMA.name}Type`) !== SCHED.Booking) continue;
+    updated = setThing(updated, setBoolean(thing, SCHED.confirmationSent, true));
+  }
+  await saveSolidDatasetAt(bookingUrl, updated, { fetch });
+}
+
 // Re-export functions that don't need path config
 export { cancelBooking, deleteBooking, addExcludedDate, updateRecurringSeries, getUserPods };
 
@@ -281,6 +300,8 @@ export default {
   setupPublicBookingPage,
   getUserPods,
   checkSlotConflict,
+  updateBookingDetails,
+  markConfirmationSent,
   saveCalendarEvent,
   loadCalendarEvents,
   deleteCalendarEventFromPod,

@@ -1,5 +1,8 @@
 import nodemailer from 'nodemailer';
 import config from '../../config/index.js';
+import { escapeICSText } from '../../utils/ics.js';
+import { singleLine } from '../../utils/html.js';
+import { isValidTimeZone } from '../../utils/tz.js';
 
 /** Escape HTML special characters to prevent XSS in email templates. */
 function escHtml(str) {
@@ -226,10 +229,13 @@ export async function sendCancellationNotice(booking, options = {}) {
   const cancelledBy = options.cancelledBy || 'the organizer';
   const c = resolveColors(options.branding || null);
 
+  // In the account's timezone, not the server's
   const formatDateTime = (date) =>
     new Date(date).toLocaleString('en-US', {
       weekday: 'long', year: 'numeric', month: 'long',
       day: 'numeric', hour: 'numeric', minute: '2-digit',
+      timeZone: isValidTimeZone(options.timezone) ? options.timezone : 'UTC',
+      timeZoneName: 'short',
     });
 
   const startDisplay = formatDateTime(booking.start);
@@ -244,7 +250,7 @@ export async function sendCancellationNotice(booking, options = {}) {
     `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
     `DTSTART:${new Date(booking.start).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
     `DTEND:${new Date(booking.end).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
-    `SUMMARY:Cancelled: ${booking.title}`,
+    `SUMMARY:Cancelled: ${escapeICSText(booking.title)}`,
     'STATUS:CANCELLED',
     'SEQUENCE:2',
     'END:VEVENT',
@@ -284,7 +290,7 @@ export async function sendCancellationNotice(booking, options = {}) {
 
   const mailOptions = {
     from: FROM,
-    subject: `Cancelled: ${booking.title}`,
+    subject: singleLine(`Cancelled: ${booking.title}`),
     html,
     icalEvent: {
       filename: 'cancelled.ics',

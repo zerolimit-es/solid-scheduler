@@ -41,7 +41,7 @@ import {
   addBookingExcludedDate,
 } from '../cloud/models/bookings-db.js';
 import { organizerIdentity } from '../utils/organizer.js';
-import { isValidTimeZone, instantToNaive, zonedToInstant, parseNaive } from '../utils/tz.js';
+import { isValidTimeZone, instantToNaive, zonedToInstant, parseNaive, currentPeriods } from '../utils/tz.js';
 import { sendVisitorConfirmation, sendOrganizerNotification, sendCancellationNotice } from '../cloud/services/email.js';
 import { syncBookingsToPod, syncCancellationsToPod } from '../cloud/services/pod-sync.js';
 
@@ -172,6 +172,8 @@ router.get('/', requireAuth(), async (req, res) => {
       if (to) options.to = new Date(to);
       if (status === 'confirmed') options.status = SCHEMA.EventConfirmed;
       if (status === 'cancelled') options.status = SCHEMA.EventCancelled;
+      // Cancelled bookings are left out unless asked for: ?status=cancelled or ?status=all
+      if (status === 'cancelled' || status === 'all') options.includeCancelled = true;
 
       const pending = await pushPendingToPod(req, podUrl, fetch);
       const podBookings = await solidService.loadBookings(podUrl, fetch, options);
@@ -195,7 +197,7 @@ router.get('/', requireAuth(), async (req, res) => {
     // scoped to this account's booking slug: without one (no account could
     // be loaded) the answer is an empty list, never other accounts' data.
     const slug = req.tenant?.booking_slug;
-    const rows = slug ? getBookingsBySlug(slug, { limit: 50, upcoming: false }) : [];
+    const rows = slug ? getBookingsBySlug(slug, { limit: 50, upcoming: false, status: status === 'cancelled' || status === 'all' ? status : 'confirmed' }) : [];
 
     const bookings = rows.map(r => ({
       id: r.id,
@@ -664,16 +666,17 @@ router.get('/stats', requireAuth(), async (req, res) => {
     const podUrl = fetch ? selectPod(req.query.pod, await ownPods(req, fetch)) : null;
     if (podUrl) {
       await pushPendingToPod(req, podUrl, fetch);
-      const stats = await calendarService.getBookingStats(podUrl, fetch);
+      const stats = await calendarService.getBookingStats(podUrl, fetch,
+        { timezone: accountTimezone(req.tenant?.booking_slug) });
       return res.json(stats);
     }
 
     // Fallback: stats from SQLite, scoped to the requesting tenant
     const slug = req.tenant?.booking_slug || null;
     if (!slug) {
-      return res.json({ thisWeek: 0, thisMonth: 0, upcoming: 0, unsynced: 0, source: 'local' });
+      return res.json({ thisWeek: 0, thisMonth: 0, upcoming: 0, cancelled: 0, unsynced: 0, source: 'local' });
     }
-    const stats = getLocalBookingStats(slug);
+    const stats = getLocalBookingStats(slug, currentPeriods(accountTimezone(slug)));
     res.json({ ...stats, source: 'local' });
   } catch (error) {
     console.error('Get stats error:', error);
@@ -778,6 +781,16 @@ router.put('/:id', requireAuth(), async (req, res) => {
     if (description !== undefined) updates.description = description;
     if (location !== undefined) updates.location = location;
     if (recurrence) updates.recurrence = recurrence;
+    // eslint-disable-next-line no-control-regex
+    const badText = (value, max) => typeof value !== 'string' || value.length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value);
+    if ((updates.title !== undefined && badText(updates.title, 200))
+      || (updates.description !== undefined && badText(updates.description, 2000))
+      || (updates.location !== undefined && badText(updates.location, 300))) {
+      return res.status(400).json({ error: 'Validation failed', message: 'title, description and location must be text of a reasonable length' });
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'Validation failed', message: 'Nothing to update' });
+    }
 
     const updated = await calendarService.updateRecurringBooking(
       podUrl,
@@ -835,6 +848,7 @@ router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req
           reason,
           skipEmail: !notify,
           cancelledBy: 'the organizer',
+          timezone: accountTimezone(slug),
           scope,
           occurrenceDate: occurrenceDate ? new Date(occurrenceDate) : null,
         });
@@ -857,7 +871,7 @@ router.delete('/:id', requireAuth(), requireFeature('cancelBooking'), async (req
 
       const local = localRowToBooking(row, accountTimezone(slug));
       if (notify) {
-        sendCancellationNotice({ ...local, organizer: organizerIdentity(getAvailability(slug)) }, { cancelledBy: 'the organizer' })
+        sendCancellationNotice({ ...local, organizer: organizerIdentity(getAvailability(slug)) }, { cancelledBy: 'the organizer', timezone: accountTimezone(slug) })
           .catch((err) => console.error('[Email] ✗ Cancellation notice failed:', err.message));
       }
       return res.json({

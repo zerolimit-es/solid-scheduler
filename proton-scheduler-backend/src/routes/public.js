@@ -8,7 +8,6 @@ import {
   initBookingsTable,
   createBooking,
   getBookingsBySlug,
-  getBookingStats,
   getBookedSlots,
   cancelBooking,
   getBookingById,
@@ -155,13 +154,30 @@ function bookedIntervals(slug, date) {
   }).filter(Boolean);
 }
 
+// A booking page exists only for a slug an account holds. Every route below
+// answers 404 for any other name, so a mistyped or retired link shows "not
+// found" instead of a page that looks bookable and then refuses the booking.
+router.param('slug', (req, res, next, slug) => {
+  const organizer = typeof slug === 'string' ? getTenantBySlug(slug.toLowerCase()) : null;
+  if (!organizer) {
+    return res.status(404).json({ error: 'Booking page not found' });
+  }
+  req.organizer = organizer;
+  next();
+});
+
 // GET /api/public/:slug - booking page info
 router.get('/:slug', publicReadLimiter, (req, res) => {
   const { slug } = req.params;
-  if (['register', 'resolve', 'bookings'].includes(slug)) return res.status(404).json({ error: 'Not found' });
-  const stats = getBookingStats(slug);
-  const avail = getAvailability(slug);
-  res.json({ slug, profile: { name: avail?.organizerName || avail?.name || config.organizer.name || 'SolidScheduler', eventDuration: avail?.eventDuration || 30, timezone: avail?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone }, stats });
+  const { avail, duration, tz } = pageSettings(slug);
+  res.json({
+    slug,
+    profile: {
+      name: avail?.organizerName || avail?.name || config.organizer.name || 'SolidScheduler',
+      eventDuration: duration,
+      timezone: tz,
+    },
+  });
 });
 
 // GET /api/public/:slug/team - public team info for booking page
@@ -460,8 +476,7 @@ router.get('/:slug/bookings', publicReadLimiter, (req, res) => {
     const { slug } = req.params;
     const bookings = getBookingsBySlug(slug, { limit: 20, upcoming: true })
       .map(b => ({ start: b.start_time, end: b.end_time }));
-    const stats = getBookingStats(slug);
-    res.json({ bookings, stats });
+    res.json({ bookings });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get bookings', message: safeMessage(error) });
   }

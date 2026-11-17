@@ -235,17 +235,23 @@ export function markBookingSynced(id, podResourceUrl) {
   ).run(podResourceUrl, id);
 }
 
-export function getBookingsBySlug(slug, { limit = 20, upcoming = true } = {}) {
+/**
+ * Bookings on one booking page.
+ * @param {string} slug
+ * @param {{ limit?: number, upcoming?: boolean, status?: 'confirmed'|'cancelled'|'all' }} [options]
+ */
+export function getBookingsBySlug(slug, { limit = 20, upcoming = true, status = 'confirmed' } = {}) {
   const db = getDb();
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`;
+  const statusFilter = status === 'all' ? '' : `AND status = '${status === 'cancelled' ? 'cancelled' : 'confirmed'}'`;
   if (upcoming) {
     return db.prepare(
-      `SELECT * FROM bookings WHERE slug = ? AND start_time >= ? AND status = 'confirmed' ORDER BY start_time ASC LIMIT ?`
+      `SELECT * FROM bookings WHERE slug = ? AND start_time >= ? ${statusFilter} ORDER BY start_time ASC LIMIT ?`
     ).all(slug, todayStr, limit);
   }
   return db.prepare(
-    `SELECT * FROM bookings WHERE slug = ? AND status = 'confirmed' ORDER BY start_time DESC LIMIT ?`
+    `SELECT * FROM bookings WHERE slug = ? ${statusFilter} ORDER BY start_time DESC LIMIT ?`
   ).all(slug, limit);
 }
 
@@ -312,24 +318,40 @@ export function saveAvailability(data, slug) {
   return true;
 }
 
-export function getBookingStats(slug) {
+/**
+ * Booking counts for one booking page, from the local table.
+ *
+ * "This week" and "this month" count meetings that take place in the
+ * current week and month (every occurrence of a recurring booking), and
+ * "upcoming" counts bookings still to come (a series once). The Pod-backed
+ * statistics in services/calendar.js use the same definitions.
+ *
+ * @param {string} slug
+ * @param {{ now: string, weekStart: string, weekEnd: string, monthStart: string, monthEnd: string }} periods
+ *   Naive bounds in the account's timezone (see currentPeriods()).
+ */
+export function getBookingStats(slug, periods) {
+  if (!slug) return { thisWeek: 0, thisMonth: 0, upcoming: 0, cancelled: 0, unsynced: 0 };
   const db = getDb();
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`;
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay());
-  const weekStr = `${startOfWeek.getFullYear()}-${(startOfWeek.getMonth()+1).toString().padStart(2,'0')}-${startOfWeek.getDate().toString().padStart(2,'0')}`;
-  const monthStr = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-01`;
+  const single = `slug = ? AND status = 'confirmed' AND (recurrence IS NULL OR recurrence = '')`;
+  const between = (from, to) =>
+    db.prepare(`SELECT COUNT(*) as c FROM bookings WHERE ${single} AND start_time >= ? AND start_time < ?`).get(slug, from, to).c;
 
-  const where = slug ? 'slug = ? AND' : '';
-  const params = slug ? [slug] : [];
+  const series = recurringRows(slug);
+  const occurrencesBetween = (from, to) =>
+    series.reduce((sum, row) => sum + occurrencesOf(row, from, to).filter((o) => o.start_time < to).length, 0);
+  // A series is upcoming while it has an occurrence left (looking ten years ahead)
+  const horizon = `${Number(periods.now.slice(0, 4)) + 10}${periods.now.slice(4)}`;
+  const upcomingSeries = series.filter((row) => occurrencesOf(row, periods.now, horizon).length > 0).length;
 
-  const thisWeek = db.prepare(`SELECT COUNT(*) as c FROM bookings WHERE ${where} start_time >= ? AND status = 'confirmed'`).get(...params, weekStr).c;
-  const thisMonth = db.prepare(`SELECT COUNT(*) as c FROM bookings WHERE ${where} start_time >= ? AND status = 'confirmed'`).get(...params, monthStr).c;
-  const upcoming = db.prepare(`SELECT COUNT(*) as c FROM bookings WHERE ${where} start_time >= ? AND status = 'confirmed'`).get(...params, todayStr).c;
-  const unsynced = db.prepare(`SELECT COUNT(*) as c FROM bookings WHERE ${where} synced_to_pod = 0 AND status = 'confirmed'`).get(...params).c;
-
-  return { thisWeek, thisMonth, upcoming, unsynced };
+  return {
+    thisWeek: between(periods.weekStart, periods.weekEnd) + occurrencesBetween(periods.weekStart, periods.weekEnd),
+    thisMonth: between(periods.monthStart, periods.monthEnd) + occurrencesBetween(periods.monthStart, periods.monthEnd),
+    upcoming: db.prepare(`SELECT COUNT(*) as c FROM bookings WHERE ${single} AND start_time >= ?`).get(slug, periods.now).c
+      + upcomingSeries,
+    cancelled: db.prepare(`SELECT COUNT(*) as c FROM bookings WHERE slug = ? AND status = 'cancelled'`).get(slug).c,
+    unsynced: db.prepare(`SELECT COUNT(*) as c FROM bookings WHERE slug = ? AND synced_to_pod = 0 AND status = 'confirmed'`).get(slug).c,
+  };
 }
 
 // ── Analytics queries (Business tier) ──────────────────────────────────

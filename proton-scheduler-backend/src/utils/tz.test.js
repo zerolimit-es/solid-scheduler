@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { instantToNaive, zonedToInstant, parseNaive, addDays, naiveDiffMinutes, isValidTimeZone } from './tz.js';
+import {
+  instantToNaive, zonedToInstant, parseNaive, addDays, naiveDiffMinutes, isValidTimeZone,
+  currentPeriods, naiveToInstant,
+} from './tz.js';
 
 describe('tz helpers', () => {
   it('converts instants to local wall time, independent of the server zone', () => {
@@ -31,5 +34,32 @@ describe('tz helpers', () => {
   it('recognises IANA zones', () => {
     assert.equal(isValidTimeZone('Europe/Paris'), true);
     assert.equal(isValidTimeZone('Romance Standard Time'), false);
+  });
+});
+
+describe('currentPeriods', () => {
+  it('gives the week (Sunday to Saturday) and month around a moment, in the timezone', () => {
+    // Wednesday 18 September 2030, 10:00 in Paris
+    assert.deepEqual(currentPeriods('Europe/Paris', new Date('2030-09-18T08:00:00Z')), {
+      now: '2030-09-18 10:00',
+      weekStart: '2030-09-15 00:00',
+      weekEnd: '2030-09-22 00:00',
+      monthStart: '2030-09-01 00:00',
+      monthEnd: '2030-10-01 00:00',
+    });
+  });
+
+  it('uses the local date, which can differ from the UTC date', () => {
+    // 23:30 UTC on 31 December is already 1 January in Paris
+    const periods = currentPeriods('Europe/Paris', new Date('2030-12-31T23:30:00Z'));
+    assert.equal(periods.now, '2031-01-01 00:30');
+    assert.equal(periods.monthStart, '2031-01-01 00:00');
+    assert.equal(periods.monthEnd, '2031-02-01 00:00');
+    assert.equal(currentPeriods('Europe/Paris', new Date('2030-12-15T12:00:00Z')).monthEnd, '2031-01-01 00:00');
+  });
+
+  it('converts a naive time back to an instant', () => {
+    assert.equal(naiveToInstant('2030-09-18 10:00', 'Europe/Paris').toISOString(), '2030-09-18T08:00:00.000Z');
+    assert.equal(naiveToInstant('not a time', 'Europe/Paris'), null);
   });
 });

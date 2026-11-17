@@ -79,3 +79,34 @@ export function naiveDiffMinutes(a, b) {
   return (Date.UTC(pb.year, pb.month - 1, pb.day, pb.hour, pb.minute)
     - Date.UTC(pa.year, pa.month - 1, pa.day, pa.hour, pa.minute)) / 60000;
 }
+
+/**
+ * The current week and month in `tz`, as naive bounds for comparing with
+ * stored times. Weeks run Sunday to Saturday. Each end is exclusive.
+ *
+ * @param {string} tz
+ * @param {Date} [at]
+ * @returns {{ now: string, weekStart: string, weekEnd: string, monthStart: string, monthEnd: string }}
+ */
+export function currentPeriods(tz, at = new Date()) {
+  const now = instantToNaive(at, tz);
+  const today = now.slice(0, 10);
+  const [y, m, d] = today.split('-').map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  const weekStartDate = addDays(today, -weekday);
+  const pad = (n) => String(n).padStart(2, '0');
+  const nextMonth = m === 12 ? `${y + 1}-01-01` : `${y}-${pad(m + 1)}-01`;
+  return {
+    now,
+    weekStart: `${weekStartDate} 00:00`,
+    weekEnd: `${addDays(weekStartDate, 7)} 00:00`,
+    monthStart: `${y}-${pad(m)}-01 00:00`,
+    monthEnd: `${nextMonth} 00:00`,
+  };
+}
+
+/** Naive "YYYY-MM-DD HH:MM" in `tz` → absolute instant, or null if it isn't one. */
+export function naiveToInstant(naive, tz) {
+  const wall = parseNaive(naive);
+  return wall ? zonedToInstant(wall.year, wall.month, wall.day, wall.hour, wall.minute, tz) : null;
+}

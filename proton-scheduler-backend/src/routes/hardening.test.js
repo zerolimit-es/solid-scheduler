@@ -225,3 +225,23 @@ describe('anonymous visitors are not given a cookie', () => {
     assert.equal(res.status, 403);
   });
 });
+
+describe('a booking link no account holds', () => {
+  it('answers 404 on every public route, so the page can say so', async () => {
+    for (const urlPath of ['/api/public/nobody-here', '/api/public/nobody-here/availability',
+      '/api/public/nobody-here/slots?date=2030-09-16', '/api/public/nobody-here/team', '/api/public/nobody-here/bookings']) {
+      const res = await fetch(`${baseUrl}${urlPath}`);
+      assert.equal(res.status, 404, urlPath);
+      assert.equal((await res.json()).error, 'Booking page not found');
+    }
+  });
+
+  it('serves a held link, without booking counts', async () => {
+    const res = await fetch(`${baseUrl}/api/public/pia`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.profile.name, 'Pia Petit');
+    assert.equal(body.stats, undefined);
+    assert.equal((await (await fetch(`${baseUrl}/api/public/pia/bookings`)).json()).stats, undefined);
+  });
+});

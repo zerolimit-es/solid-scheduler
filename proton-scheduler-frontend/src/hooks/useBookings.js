@@ -86,18 +86,9 @@ export default function useBookings({ user, publicSlug, availability, setView, s
               .map(s => ({ time: s.time, display: s.displayTime || s.display, booked: s.isBooked || s.booked || false }));
         }
 
-        // Filter out past time slots for today (applies to both public and auth'd)
-        const now = new Date();
-        const isToday = selectedDate.getFullYear() === now.getFullYear() &&
-                        selectedDate.getMonth() === now.getMonth() &&
-                        selectedDate.getDate() === now.getDate();
-        if (isToday) {
-          const nowMin = now.getHours() * 60 + now.getMinutes();
-          fetchedSlots = fetchedSlots.filter(s => {
-            const [h, m] = s.time.split(':').map(Number);
-            return h * 60 + m > nowMin + 15;
-          });
-        }
+        // The server already leaves out times that have passed, judged in the
+        // organizer's timezone. Filtering again by this browser's clock would
+        // hide valid slots from visitors in timezones ahead of the organizer.
         setSlots(fetchedSlots);
 
         // Auto-advance: if no available slots and this was auto-selected, try next day

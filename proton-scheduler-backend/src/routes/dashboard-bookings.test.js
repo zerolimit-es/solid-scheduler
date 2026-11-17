@@ -53,8 +53,8 @@ function fakePod() {
     if (url.endsWith('/')) return respond(url, null, { status: 201 }); // container creation
     if (state.readOnly) return respond(url, 'Forbidden', { status: 403 });
 
-    state.writes.push({ method, url });
     const body = String(init.body ?? '');
+    state.writes.push({ method, url, body });
     if (method === 'PUT') files.set(url, body);
     if (method === 'PATCH' && /EventCancelled/.test(body) && files.has(url)) {
       files.set(url, files.get(url).replace(/EventConfirmed/g, 'EventCancelled'));
@@ -314,5 +314,85 @@ describe('recurring bookings', () => {
     assert.equal(getBookedSlots('uma', '2030-09-23').length, 0);
     assert.equal(getBookedSlots('uma', '2030-09-30').length, 1);
     assert.equal((await book({ date: MONDAY, time: '17:00', recurrence: { frequency: 'biweekly' } })).status, 400);
+  });
+});
+
+describe('editing, cancelled bookings and statistics', () => {
+  const book = (body) => fetch(`${baseUrl}/api/bookings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Xan Client', email: 'xan@example.com', ...body }),
+  });
+  const put = (id, body) => fetch(`${baseUrl}/api/bookings/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+
+  beforeEach(async () => {
+    const { saveAvailability } = await import('../cloud/models/bookings-db.js');
+    saveAvailability({ eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma' }, 'uma');
+    const solid = (await import('../services/solid.js')).default;
+    await solid.saveAvailability(POD, { eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma', email: 'uma@example.com', days: {} }, pod.fetch);
+  });
+
+  it('changes a one-off booking in the Pod when it is edited', async () => {
+    const created = await (await book({ date: '2030-09-16', time: '10:00' })).json();
+    pod.writes.length = 0;
+
+    const res = await put(created.booking.id, { title: 'Quarterly review', location: 'Room 4' });
+    assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+    const patches = pod.writes.filter((w) => w.method === 'PATCH' && w.url.endsWith(`${created.booking.id}.ttl`));
+    assert.equal(patches.length, 1, 'the booking file is updated in place');
+    assert.match(patches[0].body, /Quarterly review/);
+    assert.match(patches[0].body, /Room 4/);
+  });
+
+  it('rejects an edit with nothing in it, or with text that is not text', async () => {
+    const created = await (await book({ date: '2030-09-16', time: '11:00' })).json();
+    assert.equal((await put(created.booking.id, {})).status, 400);
+    assert.equal((await put(created.booking.id, { title: 'x'.repeat(500) })).status, 400);
+    assert.equal((await put(created.booking.id, { location: { nested: true } })).status, 400);
+  });
+
+  it('records in the Pod that the confirmation was sent, instead of saving the booking again', async () => {
+    const created = await (await book({ date: '2030-09-16', time: '12:00' })).json();
+    const writes = pod.writes.filter((w) => w.url.endsWith(`${created.booking.id}.ttl`));
+    // One PUT creates the booking. Confirmation status, if the email went out, is a PATCH: never a second PUT.
+    assert.equal(writes.filter((w) => w.method === 'PUT').length, 1);
+    for (const w of writes.filter((x) => x.method === 'PATCH')) assert.match(w.body, /confirmationSent/);
+  });
+
+  it('lists cancelled bookings when asked, and counts them', async () => {
+    insert('kept', '2030-09-16 10:00', '2030-09-16 10:30');
+    insert('dropped', '2030-09-17 10:00', '2030-09-17 10:30');
+    await get('/api/bookings'); // pushes both to the Pod
+    const res = await fetch(`${baseUrl}/api/bookings/dropped`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notify: false }),
+    });
+    assert.equal(res.status, 200);
+
+    assert.deepEqual((await get('/api/bookings')).bookings.map((b) => b.id), ['kept']);
+    assert.deepEqual((await get('/api/bookings?status=cancelled')).bookings.map((b) => b.id), ['dropped']);
+    assert.deepEqual((await get('/api/bookings?status=all')).bookings.map((b) => b.id), ['kept', 'dropped']);
+    assert.equal((await get('/api/bookings/stats')).cancelled, 1);
+  });
+
+  it('counts the same things whether statistics come from the Pod or the local copy', async () => {
+    // Relative to now, in the account timezone: one meeting later today, one next year, one last year
+    const { instantToNaive } = await import('../utils/tz.js');
+    const day = (offsetDays) => instantToNaive(new Date(Date.now() + offsetDays * 86400000), 'Europe/Paris').slice(0, 10);
+    insert('today', `${day(0)} 23:00`, `${day(0)} 23:30`);
+    insert('next-year', `${day(400)} 10:00`, `${day(400)} 10:30`);
+    insert('last-year', `${day(-400)} 10:00`, `${day(-400)} 10:30`);
+
+    const fromPod = await get('/api/bookings/stats');
+    pod = null; // Solid session lost: the local copy answers
+    const fromLocal = await get('/api/bookings/stats');
+
+    assert.equal(fromLocal.source, 'local');
+    for (const key of ['thisWeek', 'thisMonth', 'upcoming', 'cancelled']) {
+      assert.equal(fromPod[key], fromLocal[key], key);
+    }
+    assert.equal(fromPod.thisWeek, 1, 'only the meeting taking place this week');
+    assert.equal(fromPod.thisMonth, 1);
+    assert.ok(fromPod.upcoming >= 1 && fromPod.upcoming <= 2, 'next year, and today unless 23:00 has passed');
   });
 });
