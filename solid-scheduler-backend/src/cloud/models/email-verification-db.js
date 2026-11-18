@@ -9,7 +9,11 @@ import { getDb } from './database.js';
 import config from '../../config/index.js';
 
 export const LINK_LIFETIME_MS = 24 * 60 * 60 * 1000;
+// An account can trigger at most one confirmation email a minute and five a
+// day, whatever the address, so the server can't be used to email strangers.
 export const RESEND_AFTER_MS = 60 * 1000;
+export const MAX_SENDS_PER_DAY = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const normalize = (email) => String(email ?? '').trim().toLowerCase();
 const hash = (token) => crypto.createHash('sha256').update(token).digest('hex');
@@ -45,16 +49,20 @@ export function verificationStatus(tenantId, email) {
 
 /**
  * Start confirming `email` for an account: a new link token, replacing any
- * earlier one. Refused (null) when a link went to the same address less than
- * a minute ago.
+ * earlier one. Refused (null) when the account had a link sent less than a
+ * minute ago, or five in the last day, to any address.
  * @returns {{ token: string } | null}
  */
 export function startVerification(tenantId, email) {
   const wanted = normalize(email);
   const db = getDb();
-  const row = db.prepare('SELECT * FROM email_verifications WHERE tenant_id = ?').get(tenantId);
   const now = Date.now();
-  if (row?.pending_email === wanted && row.sent_at && now - row.sent_at < RESEND_AFTER_MS) return null;
+  db.prepare('DELETE FROM email_verification_sends WHERE sent_at < ?').run(now - DAY_MS);
+  const recent = db.prepare(
+    'SELECT COUNT(*) AS day, MAX(sent_at) AS last FROM email_verification_sends WHERE tenant_id = ?'
+  ).get(tenantId);
+  if (recent.day >= MAX_SENDS_PER_DAY || (recent.last && now - recent.last < RESEND_AFTER_MS)) return null;
+  db.prepare('INSERT INTO email_verification_sends (tenant_id, sent_at) VALUES (?, ?)').run(tenantId, now);
   const token = crypto.randomBytes(32).toString('hex');
   db.prepare(`
     INSERT INTO email_verifications (tenant_id, pending_email, token_hash, expires_at, sent_at)

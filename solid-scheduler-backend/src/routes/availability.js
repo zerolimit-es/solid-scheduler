@@ -63,7 +63,10 @@ router.post('/verify-email/resend', requireAuth(), async (req, res) => {
   }
   const sent = await sendConfirmationLink(req.tenant.id, email);
   if (sent === 'too-soon') {
-    return res.status(429).json({ error: 'A link was sent less than a minute ago. Check your inbox.', emailVerification: status });
+    return res.status(429).json({
+      error: 'A confirmation email was sent recently. Check your inbox, or try again in a little while.',
+      emailVerification: status,
+    });
   }
   res.json({ emailVerification: sent === 'pending' ? 'pending' : 'not-sent' });
 });
@@ -301,7 +304,8 @@ router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, r
   let emailVerification = verificationStatus(req.tenant?.id, email);
   if (emailVerification === 'unconfirmed' && req.tenant?.id) {
     const sent = await sendConfirmationLink(req.tenant.id, email);
-    emailVerification = sent === 'not-sent' ? 'not-sent' : 'pending';
+    // 'too-soon': over the sending limit, so no link went out yet
+    emailVerification = sent === 'pending' ? 'pending' : sent === 'not-sent' ? 'not-sent' : 'unconfirmed';
   }
 
   res.json({
