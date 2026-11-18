@@ -25,6 +25,7 @@ import {
 } from '../services/slots.js';
 import { instantToNaive } from '../utils/tz.js';
 import { organizerIdentity } from '../utils/organizer.js';
+import { confirmVerification } from '../cloud/models/email-verification-db.js';
 import { buildVTimezone } from '../utils/vtimezone.js';
 import { escapeICSText } from '../utils/ics.js';
 import config from '../config/index.js';
@@ -37,6 +38,23 @@ try {
 } catch (e) {
   console.error('[Bookings] ✗ Failed to init bookings table:', e.message);
 }
+
+// POST /api/public/verify-email { token }
+// Confirms an organizer's notification email. The token from the emailed
+// link is the proof, so no sign-in is needed. A POST, sent by the "Confirm"
+// button on the page the link opens: mail scanners that open links don't
+// press it, so they can't confirm an address for anyone.
+router.post('/verify-email', bookingLimiter, (req, res) => {
+  const result = confirmVerification(req.body?.token);
+  if (result.ok) return res.json({ confirmed: true });
+  res.status(400).json({
+    confirmed: false,
+    reason: result.reason,
+    error: result.reason === 'expired'
+      ? 'This link has expired. Send a new one from your booking page settings.'
+      : "This link isn't valid any more. Send a new one from your booking page settings.",
+  });
+});
 
 // A booking page exists only for a slug an account holds. Every route below
 // answers 404 for any other name, so a mistyped or retired link shows "not

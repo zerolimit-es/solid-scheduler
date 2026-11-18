@@ -16,7 +16,7 @@ import config from '../config/index.js';
 import { changeBookingSlug, SlugTakenError, getTenantBySlug, getDb } from '../cloud/models/database.js';
 import { convertAccountTimes } from '../cloud/services/timezone-change.js';
 import { syncBookingsToPod, syncCalendarEventsToPod } from '../cloud/services/pod-sync.js';
-import { verificationStatus, startVerification, confirmVerification } from '../cloud/models/email-verification-db.js';
+import { verificationStatus, startVerification } from '../cloud/models/email-verification-db.js';
 import { sendEmailConfirmation } from '../cloud/services/email.js';
 import { isValidTimeZone } from '../utils/tz.js';
 import { normalizeSlug } from '../cloud/services/tenants.js';
@@ -39,7 +39,9 @@ const savedEmailOf = (availability) => availability?.organizerEmail || availabil
 async function sendConfirmationLink(tenantId, email) {
   const started = startVerification(tenantId, email);
   if (!started) return 'too-soon';
-  const link = `${config.baseUrl}/api/availability/verify-email?token=${started.token}`;
+  // The link opens a page with a "Confirm" button: opening it alone confirms
+  // nothing, so mail scanners that open every link can't confirm for anyone
+  const link = `${config.frontendUrl}/?confirmEmail=${started.token}`;
   try {
     await sendEmailConfirmation({ to: email, link });
     return 'pending';
@@ -48,17 +50,6 @@ async function sendConfirmationLink(tenantId, email) {
     return 'not-sent';
   }
 }
-
-/**
- * GET /api/availability/verify-email?token=...
- * The link in the confirmation email. The token is the proof, so no sign-in
- * is needed; the visitor is sent back to the app with the outcome.
- */
-router.get('/verify-email', (req, res) => {
-  const result = confirmVerification(req.query.token);
-  const outcome = result.ok ? 'confirmed' : result.reason;
-  res.redirect(`${config.frontendUrl}/?emailVerification=${outcome}`);
-});
 
 /**
  * POST /api/availability/verify-email/resend
