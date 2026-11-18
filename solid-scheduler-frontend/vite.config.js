@@ -80,5 +80,15 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.js'],
     include: ['src/**/*.test.{js,jsx}'],
     css: false,
+    // npm run test:coverage. Every source file counts, tested or not, and the
+    // run fails if coverage drops below these (set just under today's levels;
+    // raise them as tests are added)
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{js,jsx}'],
+      exclude: ['src/**/*.test.{js,jsx}', 'src/test/**', 'src/main.jsx'],
+      reporter: ['text-summary', 'text'],
+      thresholds: { lines: 80, branches: 68, functions: 72, statements: 78 },
+    },
   },
 })

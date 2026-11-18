@@ -138,6 +138,18 @@ npm run test:watch    # re-run on change
 npx vitest run src/components/booking   # one folder
 ```
 
+Coverage, with the minimums CI enforces (it fails if coverage drops below
+them; raise them when you add tests):
+
+```bash
+cd solid-scheduler-backend && npm run test:coverage    # minimums in package.json
+cd solid-scheduler-frontend && npm run test:coverage   # minimums in vite.config.js
+```
+
+CI also audits the dependencies (`.github/workflows/audit.yml`, on every
+change and weekly): a high or critical advisory in what the server or the app
+runs fails the check; build and test tools are reported only.
+
 Frontend tests sit next to the code they test (`Foo.jsx` → `Foo.test.jsx`).
 Query elements the way a person finds them: by role and label
 (`getByRole('button', { name: 'Save settings' })`), which also checks the
