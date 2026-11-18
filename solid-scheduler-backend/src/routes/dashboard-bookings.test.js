@@ -617,6 +617,14 @@ describe('confirming the notification email', () => {
     assert.equal((await again.json()).reason, 'unknown');
   });
 
+  it("doesn't let an account email address after address", async () => {
+    // The previous test sent a link moments ago: another address now gets nothing
+    mails.length = 0;
+    const saved = await (await saveEmail('someone.else@example.com')).json();
+    assert.equal(saved.emailVerification, 'unconfirmed');
+    assert.deepEqual(mailsTo('someone.else@example.com'), []);
+  });
+
   it('refuses a link that is not one it sent', async () => {
     const res = await fetch(`${baseUrl}/api/public/verify-email`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: '0'.repeat(64) }),

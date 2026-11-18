@@ -23,6 +23,7 @@ import migration006 from './006_backfill_booking_slugs.js';
 import migration007 from './007_add_branding_light_variant.js';
 import migration008 from './008_add_calendar_events.js';
 import migration009 from './009_add_email_verification.js';
+import migration010 from './010_add_email_verification_sends.js';
 
 const ALL_MIGRATIONS = [
   migration001,
@@ -34,6 +35,7 @@ const ALL_MIGRATIONS = [
   migration007,
   migration008,
   migration009,
+  migration010,
 ];
 
 export function runMigrations(db) {
