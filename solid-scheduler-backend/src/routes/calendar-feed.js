@@ -38,13 +38,17 @@ router.get('/:token.ics', publicReadLimiter, (req, res) => {
     const tenant = db.prepare('SELECT * FROM tenants WHERE id = ?').get(tenantId);
     if (!tenant) return res.status(404).send('Feed not found');
 
-    const calName = tenant.company_name || tenant.email || 'SolidScheduler Calendar';
     const slug = tenant.booking_slug;
+    // Named after the organizer, as saved in their settings (an account's
+    // "email" field holds the WebID for Solid sign-ins, so it isn't used)
+    const savedSettings = slug ? getAvailability(slug) : null;
+    const savedName = savedSettings?.organizerName || savedSettings?.name;
+    const calName = savedName ? `${savedName} – SolidScheduler` : 'SolidScheduler';
 
     // Stored times are wall-clock times in the account's timezone. They are
     // written with that TZID (and the feed defines it) so every subscriber
     // sees the right instant, including across DST for repeating events.
-    const savedTz = slug ? getAvailability(slug)?.timezone : null;
+    const savedTz = savedSettings?.timezone;
     const tz = isValidTimeZone(savedTz) ? savedTz : 'Europe/Paris';
 
     // Get bookings (upcoming, last 30 days, next 90 days)

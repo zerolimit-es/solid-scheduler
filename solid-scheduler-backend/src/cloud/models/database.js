@@ -52,6 +52,9 @@ export function getDb() {
   return db;
 }
 
+// The tables this edition uses. Tables from the former hosted edition
+// (usage tracking, API keys, webhooks, branding, CalDAV settings, teams) are
+// no longer created; databases that already have them keep them, unused.
 function initSchema() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS tenants (
@@ -69,67 +72,6 @@ function initSchema() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS usage_tracking (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      tenant_id TEXT NOT NULL REFERENCES tenants(id),
-      metric TEXT NOT NULL,
-      count INTEGER NOT NULL DEFAULT 0,
-      period TEXT NOT NULL,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(tenant_id, metric, period)
-    );
-
-    CREATE TABLE IF NOT EXISTS api_keys (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL REFERENCES tenants(id),
-      key_hash TEXT NOT NULL UNIQUE,
-      key_prefix TEXT NOT NULL,
-      name TEXT,
-      last_used_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      revoked_at DATETIME
-    );
-
-    CREATE TABLE IF NOT EXISTS webhooks (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL REFERENCES tenants(id),
-      url TEXT NOT NULL,
-      secret TEXT NOT NULL,
-      events TEXT NOT NULL DEFAULT '[]',
-      active INTEGER NOT NULL DEFAULT 1,
-      description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS webhook_deliveries (
-      id TEXT PRIMARY KEY,
-      webhook_id TEXT NOT NULL REFERENCES webhooks(id),
-      event_type TEXT NOT NULL,
-      payload TEXT NOT NULL,
-      response_status INTEGER,
-      response_body TEXT,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      delivered_at DATETIME,
-      next_retry_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS branding (
-      tenant_id TEXT PRIMARY KEY REFERENCES tenants(id),
-      company_name TEXT,
-      logo_url TEXT,
-      primary_color TEXT DEFAULT '#6366F1',
-      accent_color TEXT DEFAULT '#6366F1',
-      background_color TEXT DEFAULT '#0F172A',
-      text_color TEXT DEFAULT '#E8F4FA',
-      hide_proton_badge INTEGER NOT NULL DEFAULT 0,
-      custom_css TEXT,
-      light_background_color TEXT,
-      light_text_color TEXT,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
     CREATE TABLE IF NOT EXISTS admin_settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
@@ -140,22 +82,7 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_tenants_webid ON tenants(webid);
     CREATE INDEX IF NOT EXISTS idx_tenants_stripe_customer ON tenants(stripe_customer_id);
     CREATE INDEX IF NOT EXISTS idx_tenants_subdomain ON tenants(subdomain);
-    CREATE INDEX IF NOT EXISTS idx_usage_tenant_period ON usage_tracking(tenant_id, period);
-    CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
-    CREATE INDEX IF NOT EXISTS idx_webhooks_tenant ON webhooks(tenant_id);
-    CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
-    CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_retry ON webhook_deliveries(next_retry_at);
 
-      CREATE TABLE IF NOT EXISTS caldav_config (
-        tenant_id TEXT PRIMARY KEY REFERENCES tenants(id),
-        server_url TEXT NOT NULL DEFAULT '',
-        username TEXT NOT NULL DEFAULT '',
-        password TEXT NOT NULL DEFAULT '',
-        calendar_name TEXT NOT NULL DEFAULT '',
-        enabled INTEGER NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
   `);
 }
 
