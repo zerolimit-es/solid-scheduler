@@ -80,6 +80,7 @@ export default function BookingView({
             <button
               className="w-8 h-8 rounded-lg border border-[var(--user-card-border)] bg-[var(--user-card-bg)] text-[var(--user-text)] cursor-pointer flex items-center justify-center transition-all duration-200 hover:bg-[var(--user-card-bg)] hover:border-[var(--user-input-border)]"
               onClick={() => setCurrentMonth(new Date(year, month - 1, 1))}
+              aria-label="Previous month"
             >
               <ChevronLeftIcon className="w-4 h-4" />
             </button>
@@ -89,6 +90,7 @@ export default function BookingView({
             <button
               className="w-8 h-8 rounded-lg border border-[var(--user-card-border)] bg-[var(--user-card-bg)] text-[var(--user-text)] cursor-pointer flex items-center justify-center transition-all duration-200 hover:bg-[var(--user-card-bg)] hover:border-[var(--user-input-border)]"
               onClick={() => setCurrentMonth(new Date(year, month + 1, 1))}
+              aria-label="Next month"
             >
               <ChevronRightIcon className="w-4 h-4" />
             </button>
@@ -98,13 +100,24 @@ export default function BookingView({
               <div key={d} className="text-center text-[0.6875rem] font-semibold text-[var(--user-text-muted)] uppercase tracking-[0.05em] p-2">{d}</div>
             ))}
             {calendarDays.map((d, i) => (
-              <div
-                key={i}
-                className={getDayClasses(d)}
-                onClick={() => d.available && d.date && setSelectedDate(d.date)}
-              >
-                {d.day}
-              </div>
+              // A real button for days in this month, so the calendar works
+              // from the keyboard and reads correctly to screen readers
+              d.current ? (
+                <button
+                  type="button"
+                  key={i}
+                  className={getDayClasses(d)}
+                  disabled={!d.available}
+                  aria-pressed={!!(selectedDate && selectedDate.getTime() === d.date.getTime())}
+                  aria-label={d.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+                    + (d.available ? '' : ', unavailable')}
+                  onClick={() => setSelectedDate(d.date)}
+                >
+                  {d.day}
+                </button>
+              ) : (
+                <div key={i} className={getDayClasses(d)} aria-hidden="true">{d.day}</div>
+              )
             ))}
           </div>
         </div>
@@ -131,13 +144,17 @@ export default function BookingView({
             ) : (
               <div className="grid grid-cols-2 gap-2 max-h-[350px] overflow-y-auto pr-2">
                 {slots.map(slot => (
-                  <div
+                  <button
+                    type="button"
                     key={slot.time}
                     className={getSlotClasses(slot)}
-                    onClick={() => !slot.booked && setSelectedSlot(slot)}
+                    disabled={slot.booked}
+                    aria-pressed={selectedSlot?.time === slot.time}
+                    aria-label={slot.booked ? `${slot.display}, taken` : slot.display}
+                    onClick={() => setSelectedSlot(slot)}
                   >
                     {slot.display}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}

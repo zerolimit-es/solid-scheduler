@@ -130,7 +130,18 @@ npm test
 node --test src/middleware/validate.test.js
 node --test src/utils/ics.test.js
 node --test src/utils/recurrence.test.js
+
+# Frontend tests (Vitest + React Testing Library, in jsdom)
+cd ../solid-scheduler-frontend
+npm test              # once
+npm run test:watch    # re-run on change
+npx vitest run src/components/booking   # one folder
 ```
+
+Frontend tests sit next to the code they test (`Foo.jsx` → `Foo.test.jsx`).
+Query elements the way a person finds them: by role and label
+(`getByRole('button', { name: 'Save settings' })`), which also checks the
+page works with a keyboard and a screen reader.
 
 ### Environment Variables
 
@@ -159,7 +170,7 @@ DEFAULT_SOLID_IDP=https://login.inrupt.com
    git checkout -b fix/issue-description
    ```
 3. Make your changes following the style guides below
-4. Test your changes — run `npm test` and `npm run lint` in the backend, and `npm run lint` in the frontend
+4. Test your changes — run `npm test` and `npm run lint` in both the backend and the frontend
 5. Commit with clear, descriptive messages
 
 ### Commit Message Format
