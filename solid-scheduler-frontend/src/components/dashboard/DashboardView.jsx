@@ -14,6 +14,7 @@ export default function DashboardView({
 }) {
   // The saved link, not one being typed into the settings card
   const slug = savedAvailability?.bookingSlug || null;
+  const timezone = savedAvailability?.timezone || undefined;
   const [cancellingId, setCancellingId] = React.useState(null);
 
   const handleCancel = async (bookingId) => {
@@ -218,20 +219,23 @@ export default function DashboardView({
           ) : (
             <div className="flex flex-col gap-2.5">
               {bookings.slice(0, 5).map(booking => {
-                const startDate = (() => {
-                  if (!booking.start) return null;
-                  if (typeof booking.start === 'string' && booking.start.includes('T')) return new Date(booking.start);
-                  if (typeof booking.start === 'string') {
-                    const [datePart, timePart] = booking.start.split(' ');
-                    if (datePart && timePart) {
-                      const [y, m, d] = datePart.split('-').map(Number);
-                      const [h, min] = timePart.split(':').map(Number);
-                      return new Date(y, m - 1, d, h, min);
-                    }
-                    return new Date(booking.start.replace(' ', 'T'));
+                // Times are shown in the account's timezone, like the
+                // booking page. An instant (ISO with "T") is converted; a
+                // plain "YYYY-MM-DD HH:MM" is already that timezone's clock.
+                const startDate = booking.start ? new Date(
+                  typeof booking.start === 'string' && !booking.start.includes('T')
+                    ? booking.start.replace(' ', 'T')
+                    : booking.start
+                ) : null;
+                const isInstant = !(typeof booking.start === 'string' && !booking.start.includes('T'));
+                const show = (options) => {
+                  if (!startDate || Number.isNaN(startDate.getTime())) return '';
+                  try {
+                    return startDate.toLocaleString('en-US', isInstant && timezone ? { ...options, timeZone: timezone } : options);
+                  } catch {
+                    return startDate.toLocaleString('en-US', options);
                   }
-                  return new Date(booking.start);
-                })();
+                };
                 const attendeeName = typeof booking.attendee === 'object'
                   ? (booking.attendee?.name || booking.attendee?.email || '')
                   : (booking.attendee || '');
@@ -239,16 +243,16 @@ export default function DashboardView({
                 <div key={booking.id} className="flex items-center gap-4 p-3.5 bg-[var(--theme-card-bg)] rounded-[10px] border border-[var(--theme-card-border)]">
                   <div className="flex flex-col items-center py-2 px-3 bg-[linear-gradient(135deg,rgba(var(--color-primary-rgb),0.15),rgba(var(--color-secondary-rgb),0.1))] rounded-lg min-w-[50px]">
                     <span className="text-[0.6875rem] text-[var(--color-primary-light)] uppercase">
-                      {startDate ? startDate.toLocaleDateString('en-US', { weekday: 'short' }) : ''}
+                      {show({ weekday: 'short' })}
                     </span>
                     <span className="font-display text-lg font-bold text-[var(--color-text-primary)]">
-                      {startDate ? startDate.getDate() : ''}
+                      {show({ day: 'numeric' })}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-semibold text-[var(--color-text-primary)] m-0 mb-1 overflow-hidden text-ellipsis whitespace-nowrap">{booking.title || 'Meeting'}</h4>
                     <p className="text-xs text-[var(--theme-text-muted)] m-0">
-                      {startDate ? startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : ''}
+                      {show({ hour: 'numeric', minute: '2-digit', hour12: true })}
                       {attendeeName ? ' · ' + attendeeName : ''}
                     </p>
                   </div>

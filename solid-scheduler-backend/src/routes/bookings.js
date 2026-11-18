@@ -27,6 +27,7 @@ import { describeRecurrence, buildRRule, parseRRule } from '../utils/recurrence.
 import {
   createBooking as createBookingInDb,
   getBookingsBySlug,
+  getUpcomingBookingRows,
   getBookingStats as getLocalBookingStats,
   getBookingById,
   getAvailability,
@@ -592,20 +593,19 @@ router.get('/upcoming', requireAuth(), async (req, res) => {
       });
     }
 
-    // Fallback: read from SQLite, scoped to the requesting tenant
+    // Fallback: read from SQLite, scoped to the requesting tenant, in the
+    // same shape and with the same rules as the Pod listing above
     const upcomingSlug = req.tenant?.booking_slug;
-    const rows = upcomingSlug
-      ? getBookingsBySlug(upcomingSlug, { limit: Math.min(Math.max(parseInt(limit, 10) || 10, 1), 200), upcoming: true })
-      : [];
-    const bookings = rows.map(r => ({
-      id: r.id,
-      title: r.title,
-      start: r.start_time,
-      end: r.end_time,
-      attendee: { name: r.attendee_name, email: r.attendee_email },
-      status: r.status,
-      location: r.location,
-    }));
+    const tz = accountTimezone(upcomingSlug);
+    const max = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 200);
+    const bookings = getUpcomingBookingRows(upcomingSlug, instantToNaive(new Date(), tz), max).map((row) => {
+      const booking = localRowToBooking(row, tz);
+      if (row.series_start) {
+        booking.seriesStart = localRowToBooking({ ...row, start_time: row.series_start }, tz).start;
+        booking.recurrenceDescription = describeRecurrence(booking.recurrence);
+      }
+      return booking;
+    });
 
     res.json({
       bookings,
