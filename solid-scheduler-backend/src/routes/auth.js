@@ -96,6 +96,8 @@ const router = createAuthRouter({
   frontendUrl: config.frontendUrl,
   clientName: 'SolidScheduler',
   defaultIdp: config.solid.defaultIdp,
+  // The router's own requests to the identity provider (its sign-out address)
+  fetch: hostPolicy.guardFetch(globalThis.fetch),
 
   // ── Sign-out: withdraw the session so copies of its cookie stop working ──
   onLogout: async (req) => {
