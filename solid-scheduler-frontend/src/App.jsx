@@ -16,6 +16,7 @@ import ConfirmationView from './components/booking/ConfirmationView';
 import { LoaderIcon, AlertIcon, LogOutIcon } from './components/common/Icons';
 import { Moon, Sun, Monitor } from 'lucide-react';
 import PasskeyChallenge from './components/common/PasskeyChallenge';
+import ConfirmEmailView from './components/common/ConfirmEmailView';
 
 // No lazy-loaded components in open-source edition
 
@@ -25,6 +26,9 @@ export default function SolidScheduler() {
     const match = window.location.pathname.match(/^\/book\/([^/]+)/);
     return match ? match[1] : null;
   });
+
+  // ── Notification-email confirmation link (works signed in or not) ──
+  const [confirmEmailToken] = useState(() => new URLSearchParams(window.location.search).get('confirmEmail'));
 
   // ── Capture login error from OIDC redirect before useAuth cleans it up ──
   const [loginError, setLoginError] = useState(() => {
@@ -53,17 +57,6 @@ export default function SolidScheduler() {
     return valid.includes(seg) ? seg : 'dashboard';
   });
   const [error, setError] = useState(null);
-  // The outcome of a notification-email confirmation link, read once from the URL
-  const [emailNotice, setEmailNotice] = useState(() => {
-    const outcome = new URLSearchParams(window.location.search).get('emailVerification');
-    if (!outcome) return null;
-    const url = new URL(window.location.href);
-    url.searchParams.delete('emailVerification');
-    window.history.replaceState(null, '', url.pathname + url.search);
-    if (outcome === 'confirmed') return { ok: true, text: 'Email confirmed. You will now get booking notifications there.' };
-    if (outcome === 'expired') return { ok: false, text: 'That confirmation link has expired. Send a new one from your booking page settings.' };
-    return { ok: false, text: "That confirmation link isn't valid any more. Send a new one from your booking page settings." };
-  });
   // Whether the notification email is confirmed: none | verified | pending | unconfirmed | not-sent
   const [emailVerification, setEmailVerification] = useState('none');
   const [linkCopied, setLinkCopied] = useState(false);
@@ -234,6 +227,18 @@ export default function SolidScheduler() {
   // ═══════════════════════════════════════════════════════════════════════
   //  Render
   // ═══════════════════════════════════════════════════════════════════════
+
+  // Confirming a notification email: its own page
+  if (confirmEmailToken) {
+    return (
+      <div className="solid-scheduler">
+        <div className="grain-overlay" />
+        <div className="relative z-[1] px-4 py-24">
+          <ConfirmEmailView token={confirmEmailToken} />
+        </div>
+      </div>
+    );
+  }
 
   // Loading screen
   if (authLoading && !publicSlug) {
@@ -408,15 +413,6 @@ export default function SolidScheduler() {
           theme={theme}
           setTheme={setTheme}
         />
-
-        {emailNotice && (
-          <div role="status" className={`flex items-center gap-3 py-3.5 px-4 rounded-lg mb-6 ${emailNotice.ok
-            ? 'bg-emerald-500/10 border border-emerald-500/30 text-[var(--color-secondary)]'
-            : 'bg-red-500/10 border border-red-500/30 text-[var(--color-error)]'}`}>
-            <span>{emailNotice.text}</span>
-            <button className="ml-auto bg-none border-none cursor-pointer text-xl leading-none text-inherit" onClick={() => setEmailNotice(null)} aria-label="Dismiss">×</button>
-          </div>
-        )}
 
         {/* Error Banner */}
         <div role="alert" aria-live="assertive">

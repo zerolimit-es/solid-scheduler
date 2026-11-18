@@ -582,7 +582,12 @@ describe('confirming the notification email', () => {
     assert.equal(saved.emailVerification, 'pending');
     const [confirmation] = mailsTo('uma.new@example.com');
     assert.match(confirmation.subject, /Confirm your email/);
-    const link = /https?:\/\/\S+verify-email\?token=[0-9a-f]{64}/.exec(confirmation.text)[0];
+    const link = /https?:\/\/\S+\?confirmEmail=([0-9a-f]{64})/.exec(confirmation.text);
+    assert.ok(link, 'the email links to the confirmation page');
+    const token = link[1];
+    const confirmEmail = (t) => fetch(`${baseUrl}/api/public/verify-email`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }),
+    });
 
     // Not confirmed yet: a booking doesn't email that address
     mails.length = 0;
@@ -594,10 +599,11 @@ describe('confirming the notification email', () => {
     // Asking again straight away is refused
     assert.equal((await fetch(`${baseUrl}/api/availability/verify-email/resend`, { method: 'POST' })).status, 429);
 
-    // The link confirms it
-    const confirm = await fetch(`${baseUrl}${new URL(link).pathname}${new URL(link).search}`, { redirect: 'manual' });
-    assert.equal(confirm.status, 302);
-    assert.match(confirm.headers.get('location'), /emailVerification=confirmed$/);
+    // Opening the link (as mail scanners do) confirms nothing; the page's button does
+    assert.equal((await get('/api/availability')).emailVerification, 'pending');
+    const confirm = await confirmEmail(token);
+    assert.equal(confirm.status, 200);
+    assert.deepEqual(await confirm.json(), { confirmed: true });
     assert.equal((await get('/api/availability')).emailVerification, 'verified');
 
     mails.length = 0;
@@ -606,13 +612,17 @@ describe('confirming the notification email', () => {
     assert.equal(mailsTo('uma.new@example.com').length, 1, 'now the organizer is notified');
 
     // A link works once
-    const again = await fetch(`${baseUrl}${new URL(link).pathname}${new URL(link).search}`, { redirect: 'manual' });
-    assert.match(again.headers.get('location'), /emailVerification=unknown$/);
+    const again = await confirmEmail(token);
+    assert.equal(again.status, 400);
+    assert.equal((await again.json()).reason, 'unknown');
   });
 
   it('refuses a link that is not one it sent', async () => {
-    const res = await fetch(`${baseUrl}/api/availability/verify-email?token=${'0'.repeat(64)}`, { redirect: 'manual' });
-    assert.match(res.headers.get('location'), /emailVerification=unknown$/);
+    const res = await fetch(`${baseUrl}/api/public/verify-email`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: '0'.repeat(64) }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).reason, 'unknown');
   });
 });
 
