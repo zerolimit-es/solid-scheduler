@@ -413,5 +413,43 @@ describe('booking slug ownership', () => {
     assert.equal((await pia('/api/availability/slots?date=2030-02-30')).status, 400);
     assert.equal((await pia('/api/availability/slots?date=tomorrow')).status, 400);
   });
+
+  it('moves stored bookings and blocked time to the new timezone, keeping their moment', async () => {
+    const tia = await signIn('https://tia.solidcommunity.net/profile/card#me');
+    const save = (timezone) => tia('/api/availability', {
+      method: 'PUT', body: JSON.stringify({ eventDuration: 30, bookingSlug: 'tia-page', timezone, monday: day }),
+    });
+    assert.equal((await save('Europe/Paris')).status, 200);
+    assert.equal((await book('tia-page', '09:00')).status, 201); // Monday 2 Sept 2030, 09:00 Paris
+
+    const sqlite = new Database(DB_FILE);
+    const tenantId = sqlite.prepare("SELECT id FROM tenants WHERE booking_slug = 'tia-page'").get().id;
+    sqlite.prepare(`INSERT INTO bookings (id, slug, title, start_time, end_time, attendee_name, attendee_email, recurrence, excluded_dates)
+      VALUES ('tia-series', 'tia-page', 'Weekly', '2030-09-02 20:00', '2030-09-02 20:30', 'Rae', 'rae@example.com', 'FREQ=WEEKLY;BYDAY=MO', '2030-09-09')`).run();
+    sqlite.prepare(`INSERT INTO calendar_events (id, tenant_id, title, start_time, end_time, all_day)
+      VALUES ('tia-block', ?, 'Dentist', '2030-09-03 14:00', '2030-09-03 15:00', 0),
+             ('tia-day', ?, 'Holiday', '2030-09-05 00:00', '2030-09-06 00:00', 1)`).run(tenantId, tenantId);
+    sqlite.close();
+
+    assert.equal((await save('Asia/Tokyo')).status, 200);
+
+    const after = new Database(DB_FILE);
+    const one = after.prepare("SELECT start_time, end_time FROM bookings WHERE slug = 'tia-page' AND recurrence IS NULL").get();
+    const series = after.prepare("SELECT start_time, recurrence, excluded_dates FROM bookings WHERE id = 'tia-series'").get();
+    const block = after.prepare("SELECT start_time, end_time FROM calendar_events WHERE id = 'tia-block'").get();
+    const allDay = after.prepare("SELECT start_time FROM calendar_events WHERE id = 'tia-day'").get();
+    after.close();
+    // Paris is UTC+2 in September, Tokyo UTC+9
+    assert.deepEqual({ ...one }, { start_time: '2030-09-02 16:00', end_time: '2030-09-02 16:30' });
+    assert.deepEqual({ ...series }, { start_time: '2030-09-03 03:00', recurrence: 'FREQ=WEEKLY;BYDAY=TU', excluded_dates: '2030-09-10' });
+    assert.deepEqual({ ...block }, { start_time: '2030-09-03 21:00', end_time: '2030-09-03 22:00' });
+    assert.equal(allDay.start_time, '2030-09-05 00:00', 'all-day blocked time stays on its dates');
+
+    // Saving again with the same timezone moves nothing
+    assert.equal((await save('Asia/Tokyo')).status, 200);
+    const again = new Database(DB_FILE);
+    assert.equal(again.prepare("SELECT start_time FROM bookings WHERE id = 'tia-series'").get().start_time, '2030-09-03 03:00');
+    again.close();
+  });
 });
 

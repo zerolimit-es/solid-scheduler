@@ -10,10 +10,12 @@
 import { Router } from 'express';
 import { requireAuth, getAuthenticatedFetch } from '../middleware/auth.js';
 import { getAvailability as getLocalAvailability, saveAvailability as saveLocalAvailability } from '../cloud/models/bookings-db.js';
-import { isRealDate, slotsFor } from '../services/slots.js';
+import { isRealDate, slotsFor, DEFAULT_TIMEZONE } from '../services/slots.js';
 import solidService from '../services/solid.js';
 import config from '../config/index.js';
-import { changeBookingSlug, SlugTakenError, getTenantBySlug } from '../cloud/models/database.js';
+import { changeBookingSlug, SlugTakenError, getTenantBySlug, getDb } from '../cloud/models/database.js';
+import { convertAccountTimes } from '../cloud/services/timezone-change.js';
+import { isValidTimeZone } from '../utils/tz.js';
 import { normalizeSlug } from '../cloud/services/tenants.js';
 import { safeMessage } from '../utils/errorResponse.js';
 import { validate, updateAvailabilitySchema } from '../middleware/validate.js';
@@ -64,9 +66,20 @@ router.get('/', requireAuth(), async (req, res) => {
         for (const d of ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']) {
           if (!availability[d]) availability[d] = { enabled: false, start: '09:00', end: '17:00' };
         }
-        // Also update SQLite with Pod data (Pod is source of truth)
+        // Also update SQLite with Pod data (Pod is source of truth). If the
+        // Pod has another timezone (a change made elsewhere, or one whose Pod
+        // save failed), stored times follow it, as on a save.
         const slug = availability.bookingSlug || req.tenant?.booking_slug || null;
-        try { saveLocalAvailability(availability, slug); } catch {}
+        try {
+          const localTz = getLocalAvailability(slug)?.timezone;
+          getDb().transaction(() => {
+            if (slug && isValidTimeZone(localTz) && isValidTimeZone(availability.timezone) && localTz !== availability.timezone) {
+              const moved = convertAccountTimes({ slug, tenantId: req.tenant?.id, from: localTz, to: availability.timezone });
+              console.log(`[Availability] Pod timezone ${availability.timezone} differs from ${localTz}: moved ${moved.bookings} booking(s) and ${moved.calendarEvents} blocked time(s)`);
+            }
+            saveLocalAvailability(availability, slug);
+          })();
+        } catch {}
         // The account's booking link is the one in the database
         if (req.tenant?.booking_slug) availability.bookingSlug = req.tenant.booking_slug;
         return res.json({ configured: true, podUrl, availability, source: 'pod' });
@@ -117,6 +130,10 @@ router.get('/', requireAuth(), async (req, res) => {
  */
 router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, res) => {
   const availability = req.body;
+  // The timezone the stored times are in now, before anything is saved
+  // (the same default the booking pages use when none was saved)
+  const savedTz = getLocalAvailability(req.tenant?.booking_slug)?.timezone;
+  const previousTimezone = isValidTimeZone(savedTz) ? savedTz : DEFAULT_TIMEZONE;
 
   // Validate
   if (!availability.eventDuration) {
@@ -174,7 +191,19 @@ router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, r
   }
 
   try {
-    saveLocalAvailability(availability, slug);
+    // A new timezone: rewrite stored bookings and blocked time so they keep
+    // their moment, in the same transaction as the new setting
+    const newTimezone = availability.timezone;
+    let converted = null;
+    getDb().transaction(() => {
+      if (slug && isValidTimeZone(newTimezone) && newTimezone !== previousTimezone) {
+        converted = convertAccountTimes({ slug, tenantId: req.tenant?.id, from: previousTimezone, to: newTimezone });
+      }
+      saveLocalAvailability(availability, slug);
+    })();
+    if (converted) {
+      console.log(`[Availability] Timezone ${previousTimezone} → ${newTimezone}: moved ${converted.bookings} booking(s) and ${converted.calendarEvents} blocked time(s)`);
+    }
     console.log('[Availability] ✓ Saved to SQLite' + (slug ? ' (slug: ' + slug + ')' : ''));
   } catch (dbErr) {
     console.error('[Availability] SQLite save failed:', dbErr.message);

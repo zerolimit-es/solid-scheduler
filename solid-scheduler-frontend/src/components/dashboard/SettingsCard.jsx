@@ -123,6 +123,11 @@ export default function SettingsCard({ availability, onSave }) {
           <div>
             <label className={labelCls} htmlFor="settings-timezone">Timezone</label>
             <TimezoneSearch id="settings-timezone" value={draft.timezone} onChange={set('timezone')} />
+            <p className={hintCls}>
+              {draft.timezone !== savedSettings.timezone
+                ? 'Your weekly hours will be in this timezone. Existing meetings keep their time.'
+                : 'Your weekly hours are in this timezone.'}
+            </p>
           </div>
         </div>
 
