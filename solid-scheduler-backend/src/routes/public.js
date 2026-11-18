@@ -7,7 +7,6 @@ import { caldav, naiveToISO } from '../services/caldav.js';
 import {
   initBookingsTable,
   createBooking,
-  getBookingsBySlug,
   cancelBooking,
   getBookingById,
   markPodCancelPending,
@@ -269,20 +268,6 @@ router.post('/:slug/book', bookingLimiter, validate(publicBookingSchema), async 
   } catch (error) {
     console.error('Booking error:', error);
     res.status(500).json({ error: 'Booking failed', message: safeMessage(error) });
-  }
-});
-
-// GET /api/public/:slug/bookings
-// Public endpoint: only expose busy time ranges, never attendee PII
-// (names, emails, notes, ICS content stay private to the organizer).
-router.get('/:slug/bookings', publicReadLimiter, (req, res) => {
-  try {
-    const { slug } = req.params;
-    const bookings = getBookingsBySlug(slug, { limit: 20, upcoming: true })
-      .map(b => ({ start: b.start_time, end: b.end_time }));
-    res.json({ bookings });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to get bookings', message: safeMessage(error) });
   }
 });
 

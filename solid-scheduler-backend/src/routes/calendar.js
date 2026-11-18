@@ -43,7 +43,7 @@ import { getDb } from '../cloud/models/database.js';
 import { syncCalendarEventsToPod } from '../cloud/services/pod-sync.js';
 import solidService from '../services/solid.js';
 import { parseICSCalendar } from '../utils/ics.js';
-import { parseRRule, expandRRule } from '../utils/rrule.js';
+import { parseRRule, expandRRule, validRRule } from '../utils/rrule.js';
 import { parseNaive, addDays, naiveDiffMinutes, instantToNaive } from '../utils/tz.js';
 
 const router = Router();
@@ -110,11 +110,6 @@ function toApi(row) {
     imported: !!row.ics_uid,
     syncedToPod: !!row.synced_to_pod,
   };
-}
-
-function validRRule(value) {
-  if (typeof value !== 'string' || value.length > 300 || !/^[A-Z0-9=;,:+-]+$/i.test(value)) return false;
-  return /(^|;)FREQ=/i.test(value) && !!parseRRule(value);
 }
 
 /**

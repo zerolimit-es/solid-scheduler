@@ -130,6 +130,9 @@ const CAL_SCHED = {
 
 const CALENDAR_EVENTS_CONTAINER = 'calendar-events';
 
+/** How many Pod resources are read at once. */
+const POD_READ_CONCURRENCY = 8;
+
 /** Get the calendar-events container URL for a Pod */
 function getCalendarEventsPath(podUrl) {
   const paths = getSchedulerPaths(podUrl);
@@ -221,15 +224,13 @@ export async function loadCalendarEvents(podUrl, fetch, options = {}) {
 
   try {
     const container = await getSolidDataset(containerUrl, { fetch });
-    const resourceUrls = getContainedResourceUrlAll(container);
+    const resourceUrls = getContainedResourceUrlAll(container).filter((url) => url.endsWith('.ttl'));
 
-    for (const url of resourceUrls) {
-      if (!url.endsWith('.ttl')) continue;
+    const readEvents = async (url) => {
+      const found = [];
       try {
         const dataset = await getSolidDataset(url, { fetch });
-        const things = getThingAll(dataset);
-
-        for (const thing of things) {
+        for (const thing of getThingAll(dataset)) {
           const typeUrl = getUrl(thing, `${SCHEMA.name}Type`);
           if (typeUrl !== CAL_SCHED.CalendarEvent) continue;
 
@@ -252,11 +253,18 @@ export async function loadCalendarEvents(podUrl, fetch, options = {}) {
           if (options.from && event.start && event.start < options.from && !event.isRecurring) continue;
           if (options.to && event.start && event.start > options.to && !event.isRecurring) continue;
 
-          events.push(event);
+          found.push(event);
         }
       } catch (err) {
         console.warn(`[Solid] Failed to read calendar event ${url}:`, err.message);
       }
+      return found;
+    };
+
+    // Several at a time, not one after another, in the Pod's listing order
+    for (let i = 0; i < resourceUrls.length; i += POD_READ_CONCURRENCY) {
+      const batch = await Promise.all(resourceUrls.slice(i, i + POD_READ_CONCURRENCY).map(readEvents));
+      for (const found of batch) events.push(...found);
     }
   } catch (err) {
     console.warn('[Solid] Failed to load calendar events container:', err.message);

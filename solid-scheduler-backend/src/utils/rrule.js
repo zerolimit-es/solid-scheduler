@@ -122,3 +122,13 @@ export function buildRRule(rule) {
   if (rule.byDay && rule.byDay.length > 0) parts.push(`BYDAY=${rule.byDay.join(',')}`);
   return parts.join(';');
 }
+
+/**
+ * True for a repeat rule this app can store and expand: an RRULE value with
+ * a FREQ, made of rule characters only (no line breaks, so it is safe to
+ * write into a calendar file), at most 300 characters.
+ */
+export function validRRule(value) {
+  if (typeof value !== 'string' || value.length > 300 || !/^[A-Z0-9=;,:+-]+$/i.test(value)) return false;
+  return /(^|;)FREQ=/i.test(value) && !!parseRRule(value);
+}
