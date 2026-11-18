@@ -127,5 +127,12 @@ describe('SettingsCard', () => {
     await user.click(screen.getByRole('button', { name: 'Send the link again' }));
     expect(await screen.findByText(/less than a minute ago/)).toBeInTheDocument();
   });
+
+  it('offers a first link, not "again", when none was sent yet', () => {
+    render(<SettingsCard availability={saved} onSave={vi.fn()} emailVerification="unconfirmed" onResendConfirmation={vi.fn()} />);
+    expect(screen.getByText(/only once you confirm it/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send a confirmation link' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send the link again' })).not.toBeInTheDocument();
+  });
 });
 
