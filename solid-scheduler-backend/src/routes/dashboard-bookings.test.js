@@ -86,6 +86,7 @@ before(async () => {
   const express = (await import('express')).default;
   const bookingsRoutes = (await import('./bookings.js')).default;
   const availabilityRoutes = (await import('./availability.js')).default;
+  const publicRoutes = (await import('./public.js')).default;
 
   sqlite = getDb();
   initBookingsTable();
@@ -118,6 +119,7 @@ before(async () => {
   });
   app.use('/api/bookings', bookingsRoutes);
   app.use('/api/availability', availabilityRoutes);
+  app.use('/api/public', publicRoutes);
   await new Promise((resolve) => { server = app.listen(0, resolve); });
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
@@ -281,6 +283,48 @@ describe('recurring bookings', () => {
     saveAvailability({ eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma' }, 'uma');
     const solid = (await import('../services/solid.js')).default;
     await solid.saveAvailability(POD, { eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma', email: 'uma@example.com', days: {} }, pod.fetch);
+  });
+
+  it('keeps the time taken while a dashboard booking is being saved to the Pod', async () => {
+    const { saveAvailability } = await import('../cloud/models/bookings-db.js');
+    saveAvailability({ eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma', monday: { enabled: true, start: '09:00', end: '17:00' } }, 'uma');
+
+    // Pause the Pod when the dashboard booking is written to it
+    let reachedPod;
+    const atPod = new Promise((resolve) => { reachedPod = resolve; });
+    let letPodFinish;
+    const podGate = new Promise((resolve) => { letPodFinish = resolve; });
+    const podFetch = pod.fetch;
+    pod.fetch = async (input, init = {}) => {
+      if ((init.method || 'GET').toUpperCase() === 'PUT' && /\/bookings\/.+\.ttl/.test(String(input))) {
+        reachedPod();
+        await podGate;
+      }
+      return podFetch(input, init);
+    };
+
+    const dashboard = book({ date: MONDAY, time: '11:00' });
+    await atPod;
+
+    try {
+      // A visitor tries the same time while the Pod write is in flight
+      const visitor = await fetch(`${baseUrl}/api/public/uma/book`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: MONDAY, time: '11:00', name: 'Vera Visitor', email: 'vera@example.com' }),
+      });
+      assert.equal(visitor.status, 409, 'the held time is refused');
+      const slots = await (await fetch(`${baseUrl}/api/public/uma/slots?date=${MONDAY}`)).json();
+      assert.equal(slots.slots.find((x) => x.time === '11:00').isBooked, true, 'and shown as taken');
+    } finally {
+      letPodFinish();
+    }
+    assert.equal((await dashboard).status, 201);
+    const rows = sqlite.prepare(`SELECT attendee_name FROM bookings WHERE slug = 'uma' AND start_time = '${MONDAY} 11:00'`).all();
+    assert.deepEqual(rows.map((r) => r.attendee_name), ['Wes Client'], 'one booking for the slot');
+
+    // The hold is gone once the booking is recorded: other times stay free
+    const after = await (await fetch(`${baseUrl}/api/public/uma/slots?date=${MONDAY}`)).json();
+    assert.equal(after.slots.find((x) => x.time === '11:30').isBooked, false);
   });
 
   it("updates the Pod copy's repeat rule when a timezone change moves the series to another weekday", async () => {
