@@ -9,8 +9,9 @@
  *
  * Repeating entries keep their first occurrence's moment. When that moves to
  * another calendar day, the days named in the rule (BYDAY, BYMONTHDAY) and
- * the cancelled dates move with it. All-day blocked time is a set of dates,
- * not moments, and is left alone.
+ * the cancelled dates move with it, and the Pod copy's rule is rewritten at
+ * the next sync. All-day blocked time is a set of dates, not moments, and is
+ * left alone.
  */
 
 import { getDb } from '../models/database.js';
@@ -89,27 +90,37 @@ export function convertAccountTimes({ slug, tenantId, from, to }) {
   const db = getDb();
 
   if (slug) {
+    // The Pod copy holds absolute times, which stay right, but a repeat rule
+    // that moved to other days must be rewritten there too (pod_rule_pending)
     const update = db.prepare(
-      'UPDATE bookings SET start_time = ?, end_time = ?, recurrence = ?, excluded_dates = ? WHERE id = ?'
+      `UPDATE bookings SET start_time = ?, end_time = ?, recurrence = ?, excluded_dates = ?,
+         pod_rule_pending = CASE WHEN ? THEN 1 ELSE pod_rule_pending END
+       WHERE id = ?`
     );
     for (const row of db.prepare(
-      'SELECT id, start_time, end_time, recurrence, excluded_dates FROM bookings WHERE slug = ?'
+      'SELECT id, start_time, end_time, recurrence, excluded_dates, pod_url FROM bookings WHERE slug = ?'
     ).all(slug)) {
       const next = convertRow(row, from, to);
-      update.run(next.start, next.end, next.recurrence, next.excluded, row.id);
+      const ruleMoved = !!row.pod_url && !!row.recurrence && next.recurrence !== row.recurrence;
+      update.run(next.start, next.end, next.recurrence, next.excluded, ruleMoved ? 1 : 0, row.id);
       counts.bookings++;
     }
   }
 
   if (tenantId) {
+    // A repeat rule that moved to other days: mark the event unsynced, and
+    // the next sync replaces its Pod copy
     const update = db.prepare(
-      'UPDATE calendar_events SET start_time = ?, end_time = ?, recurrence = ? WHERE id = ? AND tenant_id = ?'
+      `UPDATE calendar_events SET start_time = ?, end_time = ?, recurrence = ?,
+         synced_to_pod = CASE WHEN ? THEN 0 ELSE synced_to_pod END
+       WHERE id = ? AND tenant_id = ?`
     );
     for (const row of db.prepare(
       'SELECT id, start_time, end_time, recurrence FROM calendar_events WHERE tenant_id = ? AND all_day = 0'
     ).all(tenantId)) {
       const next = convertRow(row, from, to);
-      update.run(next.start, next.end, next.recurrence, row.id, tenantId);
+      const ruleMoved = !!row.recurrence && next.recurrence !== row.recurrence;
+      update.run(next.start, next.end, next.recurrence, ruleMoved ? 1 : 0, row.id, tenantId);
       counts.calendarEvents++;
     }
   }

@@ -17,6 +17,8 @@ import {
   markBookingSynced,
   getPendingPodCancellations,
   clearPodCancelPending,
+  getPendingPodRuleChanges,
+  clearPodRulePending,
   getAvailability,
 } from '../models/bookings-db.js';
 import { getUnsyncedCalendarEvents, markCalendarEventSynced } from '../models/calendar-events-db.js';
@@ -72,10 +74,36 @@ export function naiveLocalToISO(year, month, day, hour, minute, timezone) {
  * @param {string} timezone - Organizer's IANA timezone (e.g. 'Europe/Paris')
  * @returns {Object} Sync results
  */
+/**
+ * Rewrite the repeat rule of Pod copies whose rule changed here (a timezone
+ * change moved a series to other weekdays). Updated in place, so cancelled
+ * occurrences and the rest of the Pod copy are kept. Never throws.
+ */
+export async function syncRuleChangesToPod(podUrl, fetch, slug) {
+  if (!slug || !podUrl) return { updated: 0, failed: 0 };
+  let updated = 0;
+  let failed = 0;
+  for (const row of getPendingPodRuleChanges(slug)) {
+    // Only this account's own Pod
+    if (!row.pod_url.startsWith(podUrl)) continue;
+    try {
+      await solidService.updateRecurringSeries(row.pod_url, { recurrence: parseRecurrence(row.recurrence) }, fetch);
+      clearPodRulePending(row.id);
+      updated++;
+    } catch (err) {
+      failed++;
+      console.warn(`[Pod Sync] Could not update the repeat rule of ${row.id} in the Pod:`, err.message);
+    }
+  }
+  if (updated) console.log(`[Pod Sync] Updated the repeat rule of ${updated} booking(s) in the Pod`);
+  return { updated, failed };
+}
+
 export async function syncBookingsToPod(podUrl, fetch, slug, timezone = 'Europe/Paris') {
   if (!slug) {
     return { synced: 0, failed: 0, total: 0 };
   }
+  await syncRuleChangesToPod(podUrl, fetch, slug);
   const unsynced = getUnsyncedBookings(slug);
 
   if (unsynced.length === 0) {

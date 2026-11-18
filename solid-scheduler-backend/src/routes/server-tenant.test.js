@@ -429,6 +429,8 @@ describe('booking slug ownership', () => {
     sqlite.prepare(`INSERT INTO calendar_events (id, tenant_id, title, start_time, end_time, all_day)
       VALUES ('tia-block', ?, 'Dentist', '2030-09-03 14:00', '2030-09-03 15:00', 0),
              ('tia-day', ?, 'Holiday', '2030-09-05 00:00', '2030-09-06 00:00', 1)`).run(tenantId, tenantId);
+    sqlite.prepare(`INSERT INTO calendar_events (id, tenant_id, title, start_time, end_time, all_day, recurrence, synced_to_pod, pod_url)
+      VALUES ('tia-gym', ?, 'Gym', '2030-09-02 21:00', '2030-09-02 22:00', 0, 'FREQ=WEEKLY;BYDAY=MO', 1, 'https://pod.example/tia/gym.ttl')`).run(tenantId);
     sqlite.close();
 
     assert.equal((await save('Asia/Tokyo')).status, 200);
@@ -444,6 +446,10 @@ describe('booking slug ownership', () => {
     assert.deepEqual({ ...series }, { start_time: '2030-09-03 03:00', recurrence: 'FREQ=WEEKLY;BYDAY=TU', excluded_dates: '2030-09-10' });
     assert.deepEqual({ ...block }, { start_time: '2030-09-03 21:00', end_time: '2030-09-03 22:00' });
     assert.equal(allDay.start_time, '2030-09-05 00:00', 'all-day blocked time stays on its dates');
+    const gym = new Database(DB_FILE);
+    const gymRow = gym.prepare("SELECT recurrence, synced_to_pod FROM calendar_events WHERE id = 'tia-gym'").get();
+    gym.close();
+    assert.deepEqual({ ...gymRow }, { recurrence: 'FREQ=WEEKLY;BYDAY=TU', synced_to_pod: 0 }, 'its Pod copy is replaced at the next sync');
 
     // Saving again with the same timezone moves nothing
     assert.equal((await save('Asia/Tokyo')).status, 200);
