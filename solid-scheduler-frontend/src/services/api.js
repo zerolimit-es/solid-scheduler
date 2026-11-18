@@ -132,6 +132,8 @@ export const api = {
       if (pod) params.set('pod', pod);
       return apiFetch(`/api/availability/slots?${params}`);
     },
+    // Send the notification email's confirmation link again
+    resendEmailConfirmation: () => apiFetch('/api/availability/verify-email/resend', { method: 'POST' }),
     createPublic: (data, pod) => apiFetch(`/api/availability/public${pod ? `?pod=${encodeURIComponent(pod)}` : ''}`, {
       method: 'POST', body: JSON.stringify(data)
     }),

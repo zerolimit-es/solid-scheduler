@@ -16,6 +16,8 @@ import config from '../config/index.js';
 import { changeBookingSlug, SlugTakenError, getTenantBySlug, getDb } from '../cloud/models/database.js';
 import { convertAccountTimes } from '../cloud/services/timezone-change.js';
 import { syncBookingsToPod, syncCalendarEventsToPod } from '../cloud/services/pod-sync.js';
+import { verificationStatus, startVerification, confirmVerification } from '../cloud/models/email-verification-db.js';
+import { sendEmailConfirmation } from '../cloud/services/email.js';
 import { isValidTimeZone } from '../utils/tz.js';
 import { normalizeSlug } from '../cloud/services/tenants.js';
 import { safeMessage } from '../utils/errorResponse.js';
@@ -23,6 +25,57 @@ import { validate, updateAvailabilitySchema } from '../middleware/validate.js';
 import { selectPod, PodNotAllowedError } from '../utils/pod.js';
 
 const router = Router();
+
+// ── Confirming the notification email ─────────────────────────────────────
+// Booking emails go to the address in the settings only once its owner has
+// clicked a link sent there (see cloud/models/email-verification-db.js).
+
+const savedEmailOf = (availability) => availability?.organizerEmail || availability?.email || '';
+
+/**
+ * Send a confirmation link for an account's email.
+ * @returns {Promise<'pending' | 'too-soon' | 'not-sent'>}
+ */
+async function sendConfirmationLink(tenantId, email) {
+  const started = startVerification(tenantId, email);
+  if (!started) return 'too-soon';
+  const link = `${config.baseUrl}/api/availability/verify-email?token=${started.token}`;
+  try {
+    await sendEmailConfirmation({ to: email, link });
+    return 'pending';
+  } catch (err) {
+    console.warn('[Availability] Could not send the email confirmation:', err.message);
+    return 'not-sent';
+  }
+}
+
+/**
+ * GET /api/availability/verify-email?token=...
+ * The link in the confirmation email. The token is the proof, so no sign-in
+ * is needed; the visitor is sent back to the app with the outcome.
+ */
+router.get('/verify-email', (req, res) => {
+  const result = confirmVerification(req.query.token);
+  const outcome = result.ok ? 'confirmed' : result.reason;
+  res.redirect(`${config.frontendUrl}/?emailVerification=${outcome}`);
+});
+
+/**
+ * POST /api/availability/verify-email/resend
+ * Send the confirmation link again (at most once a minute).
+ */
+router.post('/verify-email/resend', requireAuth(), async (req, res) => {
+  const email = savedEmailOf(getLocalAvailability(req.tenant?.booking_slug));
+  const status = verificationStatus(req.tenant?.id, email);
+  if (!req.tenant?.id || status === 'none' || status === 'verified') {
+    return res.json({ emailVerification: status });
+  }
+  const sent = await sendConfirmationLink(req.tenant.id, email);
+  if (sent === 'too-soon') {
+    return res.status(429).json({ error: 'A link was sent less than a minute ago. Check your inbox.', emailVerification: status });
+  }
+  res.json({ emailVerification: sent === 'pending' ? 'pending' : 'not-sent' });
+});
 
 /**
  * GET /api/availability
@@ -95,7 +148,8 @@ router.get('/', requireAuth(), async (req, res) => {
         } catch {}
         // The account's booking link is the one in the database
         if (req.tenant?.booking_slug) availability.bookingSlug = req.tenant.booking_slug;
-        return res.json({ configured: true, podUrl, availability, source: 'pod' });
+        return res.json({ configured: true, podUrl, availability, source: 'pod',
+          emailVerification: verificationStatus(req.tenant?.id, savedEmailOf(availability)) });
       }
     }
   } catch (podErr) {
@@ -126,7 +180,8 @@ router.get('/', requireAuth(), async (req, res) => {
       }
       if (req.tenant?.booking_slug) local.bookingSlug = req.tenant.booking_slug;
       delete local.podSyncPending;
-      return res.json({ configured: true, podUrl: 'local', availability: local, source: 'sqlite' });
+      return res.json({ configured: true, podUrl: 'local', availability: local, source: 'sqlite',
+        emailVerification: verificationStatus(req.tenant?.id, savedEmailOf(local)) });
     }
     return res.json({
       configured: false,
@@ -250,11 +305,20 @@ router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, r
     console.log('[Availability] Pod save failed (will sync on next login):', podErr.message);
   }
 
+  // A new notification email: send a link to confirm it
+  const email = savedEmailOf(availability);
+  let emailVerification = verificationStatus(req.tenant?.id, email);
+  if (emailVerification === 'unconfirmed' && req.tenant?.id) {
+    const sent = await sendConfirmationLink(req.tenant.id, email);
+    emailVerification = sent === 'not-sent' ? 'not-sent' : 'pending';
+  }
+
   res.json({
     success: true,
     message: podSaved ? 'Saved to Pod and local DB' : 'Saved locally (will sync to Pod on next login)',
     source: podSaved ? 'pod+sqlite' : 'sqlite',
     bookingSlug: slug,
+    emailVerification,
   });
 });
 

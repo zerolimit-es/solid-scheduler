@@ -11,6 +11,7 @@ export default function DashboardView({
   availability, bookings, setBookings, stats, podStatus,
   linkCopied, setLinkCopied, saving, saved,
   handleSaveAvailability, savedAvailability, handleSaveSettings, setAvailability, setError,
+  emailVerification, handleResendConfirmation,
 }) {
   // The saved link, not one being typed into the settings card
   const slug = savedAvailability?.bookingSlug || null;
@@ -197,7 +198,14 @@ export default function DashboardView({
         </div>
 
         {/* Name, email, meeting length, timezone, booking link */}
-        {savedAvailability && <SettingsCard availability={savedAvailability} onSave={handleSaveSettings} />}
+        {savedAvailability && (
+          <SettingsCard
+            availability={savedAvailability}
+            onSave={handleSaveSettings}
+            emailVerification={emailVerification}
+            onResendConfirmation={handleResendConfirmation}
+          />
+        )}
 
         {/* Blocked time: calendar events that hide booking slots */}
         <BlockedTimeCard />

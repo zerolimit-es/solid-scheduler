@@ -95,4 +95,37 @@ describe('SettingsCard', () => {
     await user.keyboard('{Enter}');
     expect(screen.getByText(/Existing meetings keep their time/)).toBeInTheDocument();
   });
+
+  it("says whether the notification email is confirmed", () => {
+    const { unmount } = render(<SettingsCard availability={saved} onSave={vi.fn()} emailVerification="verified" />);
+    expect(screen.getByText(/^Confirmed\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send the link again' })).not.toBeInTheDocument();
+    unmount();
+    render(<SettingsCard availability={saved} onSave={vi.fn()} emailVerification="pending" onResendConfirmation={vi.fn()} />);
+    expect(screen.getByText(/Booking emails start once you click it/)).toBeInTheDocument();
+  });
+
+  it('says a link will be sent when the email is changed', async () => {
+    const { user } = setup({ emailVerification: 'verified' });
+    const email = screen.getByLabelText('Email for booking notifications');
+    await user.clear(email);
+    await user.type(email, 'new@example.org');
+    expect(email).toHaveAccessibleDescription(/send a link to confirm this address/);
+  });
+
+  it('sends the link again on request', async () => {
+    const onResendConfirmation = vi.fn().mockResolvedValue(undefined);
+    const { user } = setup({ emailVerification: 'pending', onResendConfirmation });
+    await user.click(screen.getByRole('button', { name: 'Send the link again' }));
+    expect(onResendConfirmation).toHaveBeenCalled();
+    expect(await screen.findByText('Sent. Check your inbox.')).toBeInTheDocument();
+  });
+
+  it('shows why the link could not be sent again', async () => {
+    const onResendConfirmation = vi.fn().mockRejectedValue(new Error('A link was sent less than a minute ago. Check your inbox.'));
+    const { user } = setup({ emailVerification: 'pending', onResendConfirmation });
+    await user.click(screen.getByRole('button', { name: 'Send the link again' }));
+    expect(await screen.findByText(/less than a minute ago/)).toBeInTheDocument();
+  });
 });
+

@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import dns from 'node:dns/promises';
+import nodemailer from 'nodemailer';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'solid-scheduler-dashboard-'));
 process.env.DB_PATH = path.join(tmpDir, 'test.db');
@@ -77,6 +78,13 @@ const insert = (id, start, end, extra = {}) => sqlite.prepare(`
   .run(id, extra.title || `Meeting ${id}`, start, end, extra.synced ? 1 : 0, extra.podUrl || null);
 const row = (id) => sqlite.prepare('SELECT status, synced_to_pod, pod_url, pod_cancel_pending FROM bookings WHERE id = ?').get(id);
 const get = async (urlPath) => (await fetch(`${baseUrl}${urlPath}`)).json();
+
+// Capture outgoing mail instead of sending it
+const mails = [];
+nodemailer.createTransport = () => ({
+  sendMail: async (message) => { mails.push(message); return { messageId: 'test' }; },
+  verify: async () => true,
+});
 
 before(async () => {
   const { sessionManager } = await import('../middleware/auth.js');
@@ -551,3 +559,60 @@ describe('downloading a booking as .ics from the dashboard', () => {
     assert.equal((await ics('other-ics')).status, 404);
   });
 });
+
+describe('confirming the notification email', () => {
+  const MONDAY = '2030-09-16';
+  const saveEmail = (organizerEmail) => fetch(`${baseUrl}/api/availability`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      eventDuration: 30, timezone: 'Europe/Paris', bookingSlug: 'uma', organizerName: 'Uma',
+      organizerEmail, monday: { enabled: true, start: '09:00', end: '17:00' },
+    }),
+  });
+  const visitorBooks = (time) => fetch(`${baseUrl}/api/public/uma/book`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date: MONDAY, time, name: 'Vera Visitor', email: 'vera@example.com' }),
+  });
+  const mailsTo = (address) => mails.filter((m) => JSON.stringify(m.to).includes(address));
+  const settle = () => new Promise((r) => setTimeout(r, 50)); // booking emails go out in the background
+
+  it('emails a new organizer address only after its owner confirms it', async () => {
+    mails.length = 0;
+    const saved = await (await saveEmail('uma.new@example.com')).json();
+    assert.equal(saved.emailVerification, 'pending');
+    const [confirmation] = mailsTo('uma.new@example.com');
+    assert.match(confirmation.subject, /Confirm your email/);
+    const link = /https?:\/\/\S+verify-email\?token=[0-9a-f]{64}/.exec(confirmation.text)[0];
+
+    // Not confirmed yet: a booking doesn't email that address
+    mails.length = 0;
+    assert.equal((await visitorBooks('10:00')).status, 201);
+    await settle();
+    assert.deepEqual(mailsTo('uma.new@example.com'), []);
+    assert.equal(mailsTo('vera@example.com').length, 1, 'the visitor still gets their confirmation');
+
+    // Asking again straight away is refused
+    assert.equal((await fetch(`${baseUrl}/api/availability/verify-email/resend`, { method: 'POST' })).status, 429);
+
+    // The link confirms it
+    const confirm = await fetch(`${baseUrl}${new URL(link).pathname}${new URL(link).search}`, { redirect: 'manual' });
+    assert.equal(confirm.status, 302);
+    assert.match(confirm.headers.get('location'), /emailVerification=confirmed$/);
+    assert.equal((await get('/api/availability')).emailVerification, 'verified');
+
+    mails.length = 0;
+    assert.equal((await visitorBooks('11:00')).status, 201);
+    await settle();
+    assert.equal(mailsTo('uma.new@example.com').length, 1, 'now the organizer is notified');
+
+    // A link works once
+    const again = await fetch(`${baseUrl}${new URL(link).pathname}${new URL(link).search}`, { redirect: 'manual' });
+    assert.match(again.headers.get('location'), /emailVerification=unknown$/);
+  });
+
+  it('refuses a link that is not one it sent', async () => {
+    const res = await fetch(`${baseUrl}/api/availability/verify-email?token=${'0'.repeat(64)}`, { redirect: 'manual' });
+    assert.match(res.headers.get('location'), /emailVerification=unknown$/);
+  });
+});
+
