@@ -74,3 +74,38 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # ===========================================================================
+  # Docker images
+  # ===========================================================================
+  # Builds both production images (nothing is pushed) and checks each one
+  # starts, so a broken Dockerfile shows up here rather than at release.
+  docker:
+    name: Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Build backend image
+        run: docker build --target production -t solid-scheduler-backend:ci solid-scheduler-backend
+
+      - name: Build frontend image
+        run: docker build -f solid-scheduler-frontend/Dockerfile --target production -t solid-scheduler-frontend:ci .
+
+      - name: Start both and check they answer
+        run: |
+          docker run -d --name backend -p 3001:3001 \
+            -e SESSION_SECRET="$(openssl rand -hex 32)" solid-scheduler-backend:ci
+          docker run -d --name frontend -p 8080:80 \
+            --add-host backend:host-gateway solid-scheduler-frontend:ci
+          for i in $(seq 1 30); do
+            # The backend, the frontend, and the frontend's /api proxy to the backend
+            curl -fsS http://127.0.0.1:3001/health \
+              && curl -fsS http://127.0.0.1:8080/health \
+              && curl -fsS -o /dev/null http://127.0.0.1:8080/api/auth/providers \
+              && exit 0
+            sleep 2
+          done
+          docker logs backend; docker logs frontend
+          exit 1
