@@ -252,6 +252,38 @@ export function getBookingsBySlug(slug, { limit = 20, upcoming = true, status = 
   ).all(slug, limit);
 }
 
+/**
+ * Upcoming confirmed bookings for a page, soonest first, the way the Pod
+ * lists them: one-off meetings starting from `now`, and each recurring series
+ * once, at its next occurrence (`start_time`/`end_time` are that occurrence,
+ * `series_start` is when the series began). A series with nothing left is
+ * not upcoming.
+ *
+ * @param {string} slug
+ * @param {string} now - Naive "YYYY-MM-DD HH:MM" in the account's timezone
+ * @param {number} limit
+ */
+export function getUpcomingBookingRows(slug, now, limit = 10) {
+  if (!slug) return [];
+  const db = getDb();
+  const single = db.prepare(
+    `SELECT * FROM bookings WHERE slug = ? AND status = 'confirmed'
+       AND (recurrence IS NULL OR recurrence = '') AND start_time >= ?
+     ORDER BY start_time ASC LIMIT ?`
+  ).all(slug, now, limit);
+  const horizon = `${Number(now.slice(0, 4)) + 10}${now.slice(4)}`;
+  const series = db.prepare(
+    `SELECT * FROM bookings WHERE slug = ? AND status = 'confirmed'
+       AND recurrence IS NOT NULL AND recurrence != ''`
+  ).all(slug).flatMap((row) => {
+    const [next] = occurrencesOf(row, now, horizon);
+    return next ? [{ ...row, series_start: row.start_time, ...next }] : [];
+  });
+  return [...single, ...series]
+    .sort((a, b) => (a.start_time < b.start_time ? -1 : a.start_time > b.start_time ? 1 : 0))
+    .slice(0, limit);
+}
+
 // ── Availability (SQLite fallback) ──
 export function initAvailabilityTable() {
   const db = getDb();

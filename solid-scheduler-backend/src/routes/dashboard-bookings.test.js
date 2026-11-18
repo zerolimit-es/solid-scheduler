@@ -174,6 +174,30 @@ describe('upcoming means upcoming', () => {
     // The full list still has everything, oldest first
     assert.deepEqual((await get('/api/bookings')).bookings.map((b) => b.id), ['past', 'sooner', 'later', 'latest']);
   });
+
+  it('lists the same way from local data when the Pod is out of reach', async () => {
+    insert('past', '2020-01-06 10:00', '2020-01-06 10:30');
+    insert('sooner', '2030-09-16 10:00', '2030-09-16 10:30');
+    // A weekly series that began long ago and is still running
+    sqlite.prepare(`INSERT INTO bookings (id, slug, title, start_time, end_time, attendee_name, attendee_email, recurrence)
+      VALUES ('series', 'uma', 'Weekly', '2020-01-06 09:00', '2020-01-06 09:30', 'Rae', 'rae@example.com', 'FREQ=WEEKLY;BYDAY=MO')`).run();
+    pod = null; // Solid session lost
+
+    const res = await get('/api/bookings/upcoming');
+    assert.equal(res.source, 'local');
+    assert.deepEqual(res.bookings.map((b) => b.id), ['series', 'sooner']);
+    const [series, sooner] = res.bookings;
+    // Exact moments, as the Pod gives them (10:00 Paris in September is 08:00 UTC)
+    assert.equal(sooner.start, '2030-09-16T08:00:00.000Z');
+    assert.equal(sooner.end, '2030-09-16T08:30:00.000Z');
+    // The series once, at its next occurrence: a Monday 09:00 Paris from now on
+    assert.equal(series.seriesStart, '2020-01-06T08:00:00.000Z');
+    assert.ok(new Date(series.start) > new Date(), 'the next occurrence is still to come');
+    const parisWall = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', weekday: 'short', hour: '2-digit', minute: '2-digit' })
+      .format(new Date(series.start));
+    assert.equal(parisWall, 'Mon 09:00');
+    assert.ok(series.recurrenceDescription);
+  });
 });
 
 describe('cancelling from the dashboard', () => {
