@@ -20,9 +20,11 @@ RUN apk add --no-cache git openssh-client
 # Copy package files (from repo root context)
 COPY solid-scheduler-frontend/package*.json ./
 
-# Install all dependencies using SSH agent forwarding for private packages
-# Use npm install (not npm ci) to resolve platform-specific optional deps correctly
-RUN --mount=type=ssh rm -f package-lock.json && npm install && npm cache clean --force
+# Install exactly the versions in package-lock.json, as tested. The lockfile
+# lists the native packages for every platform (including Alpine's musl on
+# x64 and arm64), so npm ci picks the right ones here. SSH agent forwarding
+# is available for fetching the @zerolimit/packages git dependency.
+RUN --mount=type=ssh npm ci && npm cache clean --force
 
 # =============================================================================
 # Stage 2: Builder
@@ -51,9 +53,9 @@ WORKDIR /workspace/solid-scheduler-frontend
 # git is needed to fetch the @zerolimit/packages dependency from GitHub
 RUN apk add --no-cache git
 
-# Copy package files and install dependencies (same way as the deps stage)
+# Copy package files and install the locked dependencies (same as the deps stage)
 COPY solid-scheduler-frontend/package*.json ./
-RUN rm -f package-lock.json && npm install
+RUN npm ci
 
 # Copy source code
 COPY solid-scheduler-frontend/ ./
