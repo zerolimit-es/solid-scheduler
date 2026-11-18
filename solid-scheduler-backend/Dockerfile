@@ -14,8 +14,10 @@ RUN apk add --no-cache git openssh-client python3 make
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies using SSH agent forwarding for private packages
-RUN --mount=type=ssh npm install --omit=dev --install-links && npm cache clean --force
+# Install the production dependencies exactly as locked in package-lock.json.
+# SSH agent forwarding is available for fetching the @zerolimit/packages git
+# dependency.
+RUN --mount=type=ssh npm ci --omit=dev && npm cache clean --force
 
 # =============================================================================
 # Stage 2: Development (for local development with hot reload)
@@ -27,9 +29,9 @@ WORKDIR /app
 # Install development tools (same build tools as the deps stage)
 RUN apk add --no-cache git python3 make
 
-# Copy package files and install all dependencies
+# Copy package files and install all locked dependencies
 COPY package*.json ./
-RUN npm install --install-links
+RUN npm ci
 
 # SQLite database on the /data volume, outside the mounted source tree
 ENV DB_PATH=/data/solid-scheduler.db
