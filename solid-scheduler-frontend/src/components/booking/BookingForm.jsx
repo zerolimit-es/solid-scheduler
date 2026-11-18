@@ -39,10 +39,17 @@ export default function BookingForm({
           <p className="text-[0.8125rem] text-[var(--user-primary)] m-0">{selectedSlot?.display} · {availability?.eventDuration || 30} min</p>
         </div>
       </div>
+      {/* A real form: Enter submits, and the browser checks required fields
+          and the email format before anything is sent */}
+      <form onSubmit={(e) => { e.preventDefault(); handleBooking(); }}>
       <div className="mb-4">
-        <label className={labelCls}>Your Name *</label>
+        <label className={labelCls} htmlFor="booking-name">Your Name *</label>
         <input
+          id="booking-name"
           type="text"
+          required
+          maxLength={100}
+          autoComplete="name"
           className={inputCls}
           placeholder="John Doe"
           value={bookingForm.name}
@@ -50,9 +57,13 @@ export default function BookingForm({
         />
       </div>
       <div className="mb-4">
-        <label className={labelCls}>Email Address *</label>
+        <label className={labelCls} htmlFor="booking-email">Email Address *</label>
         <input
+          id="booking-email"
           type="email"
+          required
+          maxLength={254}
+          autoComplete="email"
           className={inputCls}
           placeholder="john@example.com"
           value={bookingForm.email}
@@ -60,8 +71,10 @@ export default function BookingForm({
         />
       </div>
       <div className="mb-4">
-        <label className={labelCls}>Notes (optional)</label>
+        <label className={labelCls} htmlFor="booking-notes">Notes (optional)</label>
         <textarea
+          id="booking-notes"
+          maxLength={1000}
           className={`${inputCls} resize-y min-h-[90px]`}
           placeholder="What would you like to discuss?"
           value={bookingForm.notes}
@@ -70,8 +83,9 @@ export default function BookingForm({
       </div>
       {allowRepeat && (
         <div className="mb-4">
-          <label className={labelCls}>Repeat</label>
+          <label className={labelCls} htmlFor="booking-repeat">Repeat</label>
           <select
+            id="booking-repeat"
             className={inputCls}
             value={repeat?.id || 'none'}
             onChange={(e) => {
@@ -89,8 +103,9 @@ export default function BookingForm({
       )}
       {allowRepeat && bookingForm.recurrence && (
         <div className="mb-4">
-          <label className={labelCls}>Number of occurrences</label>
+          <label className={labelCls} htmlFor="booking-count">Number of occurrences</label>
           <input
+            id="booking-count"
             type="number"
             className={inputCls}
             min="2"
@@ -108,15 +123,16 @@ export default function BookingForm({
         </div>
       )}
       <div className="flex gap-3.5 mt-6">
-        <button className="btn bg-transparent border-[1.5px] border-[var(--user-card-border)] text-[var(--user-text)]" onClick={() => setView('booking')}>Back</button>
+        <button type="button" className="btn bg-transparent border-[1.5px] border-[var(--user-card-border)] text-[var(--user-text)]" onClick={() => setView('booking')}>Back</button>
         <button
+          type="submit"
           className="btn flex-1 bg-gradient-to-br from-user-primary to-user-dark text-white border-none"
-          onClick={handleBooking}
-          disabled={saving || !bookingForm.name || !bookingForm.email}
+          disabled={saving}
         >
           {saving ? <><LoaderIcon className="btn-loader" /> Booking...</> : 'Confirm Booking'}
         </button>
       </div>
+      </form>
     </div>
   );
 }

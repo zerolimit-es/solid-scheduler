@@ -138,7 +138,13 @@ export default function DashboardView({
               }
               return (
                 <div key={day} className="flex items-center gap-3.5 py-2.5 px-3.5 bg-[var(--theme-card-bg)] rounded-lg border border-[var(--theme-card-border)]">
-                  <div
+                  {/* A switch that works from the keyboard and tells screen
+                      readers whether the day is on */}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!!d.enabled}
+                    aria-label={`Available on ${day.charAt(0).toUpperCase() + day.slice(1)}`}
                     className={"day-toggle " + (d.enabled ? "active" : "")}
                     onClick={() => setAvailability({
                       ...availability,
@@ -150,6 +156,7 @@ export default function DashboardView({
                     <div className="flex items-center gap-2 ml-auto">
                       <select
                         className="time-select"
+                        aria-label={`${day.charAt(0).toUpperCase() + day.slice(1)} start`}
                         value={d.start || '09:00'}
                         onChange={(e) => setAvailability({
                           ...availability,
@@ -163,6 +170,7 @@ export default function DashboardView({
                       <span className="text-white/30 text-[0.85rem]">→</span>
                       <select
                         className="time-select"
+                        aria-label={`${day.charAt(0).toUpperCase() + day.slice(1)} end`}
                         value={d.end || '17:00'}
                         onChange={(e) => setAvailability({
                           ...availability,
@@ -281,6 +289,8 @@ export default function DashboardView({
 
       <style>{`
         .day-toggle {
+          border: none;
+          padding: 0;
           width: 36px;
           height: 20px;
           background: rgba(255,255,255,0.1);
@@ -289,6 +299,10 @@ export default function DashboardView({
           cursor: pointer;
           transition: all 0.2s;
           flex-shrink: 0;
+        }
+        .day-toggle:focus-visible {
+          outline: 2px solid #6366F1;
+          outline-offset: 2px;
         }
         .day-toggle.active {
           background: #6366F1;

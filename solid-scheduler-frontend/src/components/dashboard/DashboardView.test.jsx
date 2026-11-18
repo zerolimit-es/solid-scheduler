@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import DashboardView from './DashboardView';
 
 // Cards that load their own data are tested on their own
@@ -56,5 +57,31 @@ describe('DashboardView', () => {
   it('says when there is nothing coming up', () => {
     renderDashboard();
     expect(screen.getByText('No upcoming meetings')).toBeInTheDocument();
+  });
+
+  it('turns a weekday on and off with a switch, from the keyboard too', async () => {
+    const setAvailability = vi.fn();
+    const week = {
+      ...saved,
+      monday: { enabled: true, start: '09:00', end: '17:00' },
+      saturday: { enabled: false, start: '09:00', end: '17:00' },
+    };
+    renderDashboard({ availability: week, setAvailability });
+
+    const monday = screen.getByRole('switch', { name: 'Available on Monday' });
+    expect(monday).toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Available on Saturday' })).not.toBeChecked();
+
+    monday.focus();
+    await userEvent.setup().keyboard(' ');
+    expect(setAvailability).toHaveBeenCalledWith(expect.objectContaining({
+      monday: expect.objectContaining({ enabled: false }),
+    }));
+  });
+
+  it("names each day's start and end time", () => {
+    renderDashboard({ availability: { ...saved, monday: { enabled: true, start: '09:00', end: '17:00' } } });
+    expect(screen.getByRole('combobox', { name: 'Monday start' })).toHaveValue('09:00');
+    expect(screen.getByRole('combobox', { name: 'Monday end' })).toHaveValue('17:00');
   });
 });
