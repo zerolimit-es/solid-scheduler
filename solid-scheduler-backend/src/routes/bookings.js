@@ -33,6 +33,7 @@ import {
   getAvailability,
   recordPodBooking,
   hasOverlappingBooking,
+  holdSlot,
   cancelBookingForSlug,
   getUnsyncedBookings,
   markPodCancelPending,
@@ -270,6 +271,7 @@ router.get('/expanded', requireAuth(), async (req, res) => {
  * Create a new booking
  */
 router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
+  let releaseHold = () => {};
   try {
     let { start, end, attendee, notes, location, recurrence } = req.body;
 
@@ -331,6 +333,14 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
     if (hasOverlappingBooking(slugForTimes, startNaive, endNaive)) {
       return res.status(409).json({ error: 'Slot unavailable', message: 'This time slot is no longer available' });
     }
+    // Keep the time taken while the booking is saved (the Pod takes a
+    // moment), so a visitor can't book it on the public page meanwhile.
+    // Checked and held with no await in between.
+    releaseHold = holdSlot(slugForTimes, {
+      start: startNaive,
+      end: endNaive,
+      recurrence: recurrence ? buildRRule(recurrence) : null,
+    });
 
     // Build display strings the frontend ConfirmationView expects
     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -555,6 +565,9 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
       error: 'Failed to create booking',
       message: safeMessage(error),
     });
+  } finally {
+    // By now the booking is in the local table, or it failed
+    releaseHold();
   }
 });
 

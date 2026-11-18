@@ -26,7 +26,15 @@ const normalizeSlug = (value) =>
  * Booking page settings: the name and email shown to people who book, the
  * meeting length, the timezone the weekly hours are in, and the booking link.
  */
-export default function SettingsCard({ availability, onSave }) {
+/** What the email field says about confirmation, for each server status. */
+const EMAIL_STATUS_TEXT = {
+  verified: 'Confirmed. You get an email here when someone books or cancels.',
+  pending: "We sent a link to this address. Booking emails start once you click it.",
+  unconfirmed: 'Not confirmed yet: no booking emails are sent here until you click the link we send.',
+  'not-sent': "The confirmation email couldn't be sent. Check the server's email settings, then send it again.",
+};
+
+export default function SettingsCard({ availability, onSave, emailVerification = 'none', onResendConfirmation }) {
   const [draft, setDraft] = React.useState(() => settingsOf(availability));
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
@@ -42,6 +50,17 @@ export default function SettingsCard({ availability, onSave }) {
     setSaved(false);
   };
   const changed = JSON.stringify(draft) !== savedKey;
+  const emailChanged = draft.organizerEmail.trim().toLowerCase() !== savedSettings.organizerEmail.trim().toLowerCase();
+  const [resend, setResend] = React.useState({ busy: false, message: null });
+  const handleResend = async () => {
+    setResend({ busy: true, message: null });
+    try {
+      await onResendConfirmation();
+      setResend({ busy: false, message: 'Sent. Check your inbox.' });
+    } catch (err) {
+      setResend({ busy: false, message: err.message });
+    }
+  };
   const slugPreview = normalizeSlug(draft.bookingSlug);
   const slugChanged = slugPreview !== savedSettings.bookingSlug;
 
@@ -101,9 +120,25 @@ export default function SettingsCard({ availability, onSave }) {
             maxLength={254}
             value={draft.organizerEmail}
             onChange={(e) => set('organizerEmail')(e.target.value)}
+            aria-describedby="settings-email-status"
             placeholder="you@example.com"
           />
-          <p className={hintCls}>You get an email here when someone books or cancels.</p>
+          <p id="settings-email-status" className={hintCls} aria-live="polite">
+            {!draft.organizerEmail.trim()
+              ? 'Add an email to hear about bookings and cancellations.'
+              : emailChanged
+                ? "After you save, we'll send a link to confirm this address."
+                : EMAIL_STATUS_TEXT[emailVerification] || 'You get an email here when someone books or cancels.'}
+          </p>
+          {!emailChanged && draft.organizerEmail.trim() && ['pending', 'unconfirmed', 'not-sent'].includes(emailVerification) && onResendConfirmation && (
+            <p className={hintCls}>
+              <button type="button" className="bg-transparent border-none p-0 text-[var(--color-primary-light)] underline cursor-pointer text-[0.6875rem]"
+                onClick={handleResend} disabled={resend.busy}>
+                {resend.busy ? 'Sending…' : 'Send the link again'}
+              </button>
+              {resend.message && <span className="ml-2">{resend.message}</span>}
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -5,6 +5,14 @@
 import { describe, it, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import nodemailer from 'nodemailer';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+// Organizer emails only go to confirmed addresses, recorded in the database
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'solid-scheduler-email-test-'));
+process.env.DB_PATH = path.join(tmpDir, 'test.db');
+delete process.env.DB_ENCRYPTION_KEY;
 
 const sent = [];
 let email, cloudEmail;
@@ -17,6 +25,8 @@ before(async () => {
   });
   email = await import('./email.js');
   cloudEmail = await import('../cloud/services/email.js');
+  const { getDb } = await import('../cloud/models/database.js');
+  getDb().prepare("INSERT INTO email_verifications (tenant_id, verified_email) VALUES ('t-olga', 'olga@example.com')").run();
 });
 
 beforeEach(() => { sent.length = 0; });

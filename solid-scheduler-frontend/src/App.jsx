@@ -53,6 +53,19 @@ export default function SolidScheduler() {
     return valid.includes(seg) ? seg : 'dashboard';
   });
   const [error, setError] = useState(null);
+  // The outcome of a notification-email confirmation link, read once from the URL
+  const [emailNotice, setEmailNotice] = useState(() => {
+    const outcome = new URLSearchParams(window.location.search).get('emailVerification');
+    if (!outcome) return null;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('emailVerification');
+    window.history.replaceState(null, '', url.pathname + url.search);
+    if (outcome === 'confirmed') return { ok: true, text: 'Email confirmed. You will now get booking notifications there.' };
+    if (outcome === 'expired') return { ok: false, text: 'That confirmation link has expired. Send a new one from your booking page settings.' };
+    return { ok: false, text: "That confirmation link isn't valid any more. Send a new one from your booking page settings." };
+  });
+  // Whether the notification email is confirmed: none | verified | pending | unconfirmed | not-sent
+  const [emailVerification, setEmailVerification] = useState('none');
   const [linkCopied, setLinkCopied] = useState(false);
 
   // ── URL ↔ view sync ──────────────────────────────────────────────────
@@ -153,6 +166,7 @@ export default function SolidScheduler() {
           : { ...getDefaultAvailability(), bookingSlug: availRes?.bookingSlug || '' };
         setAvailability(loaded);
         setSavedAvailability(loaded);
+        setEmailVerification(availRes?.emailVerification || 'none');
 
         setStats(statsRes);
 
@@ -208,6 +222,13 @@ export default function SolidScheduler() {
     const confirmed = { ...next, bookingSlug: res?.bookingSlug || next.bookingSlug };
     setSavedAvailability(confirmed);
     setAvailability((prev) => ({ ...prev, ...settings, bookingSlug: confirmed.bookingSlug }));
+    if (res?.emailVerification) setEmailVerification(res.emailVerification);
+  };
+
+  const handleResendConfirmation = async () => {
+    const res = await api.availability.resendEmailConfirmation();
+    if (res?.emailVerification) setEmailVerification(res.emailVerification);
+    if (res?.emailVerification === 'not-sent') throw new Error("The email couldn't be sent.");
   };
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -388,6 +409,15 @@ export default function SolidScheduler() {
           setTheme={setTheme}
         />
 
+        {emailNotice && (
+          <div role="status" className={`flex items-center gap-3 py-3.5 px-4 rounded-lg mb-6 ${emailNotice.ok
+            ? 'bg-emerald-500/10 border border-emerald-500/30 text-[var(--color-secondary)]'
+            : 'bg-red-500/10 border border-red-500/30 text-[var(--color-error)]'}`}>
+            <span>{emailNotice.text}</span>
+            <button className="ml-auto bg-none border-none cursor-pointer text-xl leading-none text-inherit" onClick={() => setEmailNotice(null)} aria-label="Dismiss">×</button>
+          </div>
+        )}
+
         {/* Error Banner */}
         <div role="alert" aria-live="assertive">
           {error && (
@@ -415,6 +445,8 @@ export default function SolidScheduler() {
             handleSaveAvailability={handleSaveAvailability}
             savedAvailability={savedAvailability}
             handleSaveSettings={handleSaveSettings}
+            emailVerification={emailVerification}
+            handleResendConfirmation={handleResendConfirmation}
             setAvailability={setAvailability}
             setError={setError}
           />

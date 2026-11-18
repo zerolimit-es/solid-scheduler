@@ -159,6 +159,35 @@ function recurringRows(slug) {
   ).all(slug);
 }
 
+// ── Holds ──────────────────────────────────────────────────────────────────
+// A booking made from the dashboard is checked here, then saved to the Pod,
+// which takes a moment. A hold keeps its slot taken locally in between, so a
+// visitor can't book the same time on the public page meanwhile. Held in
+// memory: the server is one process, and a hold lasts one request.
+
+const holds = new Map(); // slug -> Set of row-like { start_time, end_time, recurrence }
+
+/**
+ * Keep a time taken until the returned function is called.
+ * @param {string} slug
+ * @param {{ start: string, end: string, recurrence?: string|null }} slot - Naive local times
+ * @returns {() => void} Releases the hold
+ */
+export function holdSlot(slug, { start, end, recurrence = null }) {
+  if (!slug) return () => {};
+  const hold = { start_time: start, end_time: end, recurrence: recurrence || null, excluded_dates: '' };
+  if (!holds.has(slug)) holds.set(slug, new Set());
+  holds.get(slug).add(hold);
+  return () => {
+    const set = holds.get(slug);
+    if (!set) return;
+    set.delete(hold);
+    if (set.size === 0) holds.delete(slug);
+  };
+}
+
+const heldRows = (slug) => [...(holds.get(slug) ?? [])];
+
 /**
  * Whether a confirmed booking on this page overlaps [start, end), counting
  * every occurrence of a recurring booking.
@@ -172,9 +201,12 @@ export function hasOverlappingBooking(slug, start, end) {
   ).get(slug, end, start);
   if (single) return true;
 
+  const held = heldRows(slug);
+  if (held.some((h) => !h.recurrence && h.start_time < end && h.end_time > start)) return true;
+
   // Occurrences that could reach into the range start at most a day before it
   const from = `${addDays(start.slice(0, 10), -1)} 00:00`;
-  return recurringRows(slug).some((row) =>
+  return [...recurringRows(slug), ...held.filter((h) => h.recurrence)].some((row) =>
     occurrencesOf(row, from, end).some((occ) => occ.start_time < end && occ.end_time > start));
 }
 
@@ -372,6 +404,19 @@ export function saveAvailability(data, slug) {
 }
 
 /**
+ * Mark whether a page's saved settings are still waiting to reach the Pod.
+ * While they are, the local copy is the newer one: reads keep it and retry
+ * the Pod, instead of copying the Pod's older settings back.
+ */
+export function setAvailabilityPodPending(slug, pending) {
+  const current = getAvailability(slug);
+  if (!current) return false;
+  if (pending) current.podSyncPending = true;
+  else delete current.podSyncPending;
+  return saveAvailability(current, slug);
+}
+
+/**
  * Booking counts for one booking page, from the local table.
  *
  * "This week" and "this month" count meetings that take place in the
@@ -415,8 +460,13 @@ export function getBookedSlots(slug, date) {
   ).all(slug, `${date}%`);
   if (!parseNaive(`${date} 00:00`)) return single;
 
-  const recurring = recurringRows(slug).flatMap((row) => occurrencesOf(row, `${date} 00:00`, `${date} 23:59`));
-  return [...single, ...recurring];
+  // Times held by a booking that is being saved count as taken
+  const held = heldRows(slug);
+  const heldSingle = held.filter((h) => !h.recurrence && h.start_time.startsWith(date))
+    .map(({ start_time, end_time }) => ({ start_time, end_time }));
+  const recurring = [...recurringRows(slug), ...held.filter((h) => h.recurrence)]
+    .flatMap((row) => occurrencesOf(row, `${date} 00:00`, `${date} 23:59`));
+  return [...single, ...heldSingle, ...recurring];
 }
 
 export function cancelBooking(id) {

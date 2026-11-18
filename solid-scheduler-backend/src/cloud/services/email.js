@@ -3,6 +3,7 @@ import config from '../../config/index.js';
 import { escapeICSText } from '../../utils/ics.js';
 import { singleLine } from '../../utils/html.js';
 import { isValidTimeZone } from '../../utils/tz.js';
+import { organizerRecipient } from '../models/email-verification-db.js';
 
 /** Escape HTML special characters to prevent XSS in email templates. */
 function escHtml(str) {
@@ -106,7 +107,8 @@ export async function sendVisitorConfirmation({ booking, icsContent }) {
 }
 
 export async function sendOrganizerNotification({ booking, icsContent, organizerEmail }) {
-  const recipient = organizerEmail || ORGANIZER_EMAIL;
+  // Only to an address its owner confirmed (or the operator's ORGANIZER_EMAIL)
+  const recipient = organizerRecipient(organizerEmail) || ORGANIZER_EMAIL;
   if (!recipient) {
     console.log('[Email] ⚠ No ORGANIZER_EMAIL set, skipping organizer notification');
     return;
@@ -257,7 +259,7 @@ export async function sendCancellationNotice(booking, options = {}) {
   }
 
   if (!options.skipOrganizer) {
-    const orgEmail = booking.organizer?.email || ORGANIZER_EMAIL;
+    const orgEmail = organizerRecipient(booking.organizer?.email) || ORGANIZER_EMAIL;
     if (orgEmail) {
       try {
         results.organizer = await transporter.sendMail({
@@ -284,4 +286,23 @@ export async function verifySmtp() {
     console.error('[Email] ✗ SMTP connection failed:', err.message);
     return false;
   }
+}
+
+/**
+ * Ask an organizer to confirm their notification email: booking emails go
+ * there only once they click the link.
+ */
+export async function sendEmailConfirmation({ to, link }) {
+  const c = COLORS;
+  await transporter.sendMail({
+    from: FROM,
+    to,
+    subject: 'Confirm your email for booking notifications',
+    text: `Confirm this address to receive SolidScheduler booking notifications:\n\n${link}\n\nThe link works for 24 hours. If you didn't ask for this, ignore this email: nothing is sent here until the link is used.`,
+    html: `<div style="font-family:system-ui,sans-serif;color:${c.textPrimary};background:${c.bg};padding:24px">
+      <p>Confirm this address to receive SolidScheduler booking notifications.</p>
+      <p><a href="${escHtml(link)}" style="color:${c.primary}">Confirm my email</a></p>
+      <p style="color:${c.textMuted};font-size:13px">The link works for 24 hours. If you didn't ask for this, ignore this email: nothing is sent here until the link is used.</p>
+    </div>`,
+  });
 }

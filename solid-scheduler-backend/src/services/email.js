@@ -8,6 +8,7 @@
 
 import nodemailer from 'nodemailer';
 import config from '../config/index.js';
+import { organizerRecipient } from '../cloud/models/email-verification-db.js';
 import { generateICS, generateCancellationICS } from '../utils/ics.js';
 import { escapeHtml as esc, singleLine } from '../utils/html.js';
 import { isValidTimeZone } from '../utils/tz.js';
@@ -282,8 +283,8 @@ Scheduled with SolidScheduler - Privacy-first scheduling
     results.errors.push({ recipient: 'attendee', error: error.message });
   }
   
-  // Send to organizer
-  if (!options.skipOrganizer) {
+  // Send to organizer, only at an address its owner confirmed
+  if (!options.skipOrganizer && organizerRecipient(booking.organizer?.email)) {
     try {
       results.organizer = await transport.sendMail(organizerEmail);
       console.log(`✓ Notification sent to organizer: ${booking.organizer.email}`);
@@ -421,8 +422,8 @@ SolidScheduler - Privacy-first scheduling
     results.errors.push({ recipient: 'attendee', error: error.message });
   }
   
-  // Send to organizer
-  if (!options.skipOrganizer) {
+  // Send to organizer, only at an address its owner confirmed
+  if (!options.skipOrganizer && organizerRecipient(booking.organizer?.email)) {
     try {
       results.organizer = await transport.sendMail({
         ...emailContent,
@@ -446,6 +447,8 @@ SolidScheduler - Privacy-first scheduling
 export async function sendReminder(booking, recipientType = 'attendee') {
   const transport = getTransporter();
   const recipient = recipientType === 'attendee' ? booking.attendee : booking.organizer;
+  // An organizer is only emailed at an address they confirmed
+  if (recipientType !== 'attendee' && !organizerRecipient(recipient?.email)) return null;
   const otherParty = recipientType === 'attendee' ? booking.organizer : booking.attendee;
   
   const formatDateTime = (date) => {
