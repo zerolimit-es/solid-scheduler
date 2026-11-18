@@ -270,6 +270,18 @@ describe('the blocked-time list without a range', () => {
     assert.equal(body.events.find((e) => e.title === 'Old course').next, null);
   });
 
+  it("names the calendar feed after the organizer, not the WebID", async () => {
+    const feed = async () => {
+      const { body } = await carol.get('/api/calendar/feed-token');
+      return (await fetch(`${baseUrl}${body.feedPath}`)).text();
+    };
+    assert.match(await feed(), /^X-WR-CALNAME:SolidScheduler\r?$/m, 'before a name is saved');
+    assert.doesNotMatch(await feed(), /X-WR-CALNAME:.*profile/);
+    const saved = await carol.put('/api/availability', { json: { eventDuration: 30, organizerName: 'Carol Chen' } });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.match(await feed(), /^X-WR-CALNAME:Carol Chen – SolidScheduler\r?$/m);
+  });
+
   it('still accepts an explicit range', async () => {
     assert.equal((await carol.get(`/api/calendar/events?from=${DAY}&to=${DAY}`)).status, 200);
     assert.equal((await carol.get(`/api/calendar/events?from=${DAY}`)).status, 400, 'from without to');

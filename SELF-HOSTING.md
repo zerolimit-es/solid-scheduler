@@ -208,6 +208,7 @@ CALDAV_BOOKING_SLUG=your-booking-slug
 | `BASE_URL` | Yes | — | Public URL of your instance |
 | `FRONTEND_URL` | Yes | — | Usually same as BASE_URL |
 | `SESSION_SECRET` | Yes | — | 32+ character random string |
+| `DB_ENCRYPTION_KEY` | No | — | Encrypts the database (accounts, bookings, attendee names and emails, passkeys) with AES-256. Setting it on an existing database encrypts it in place on the next start. Keep the key safe: without it the database can't be read, and there is no way to switch encryption off again |
 | `DOMAIN` | Caddy only | — | Your domain (used by Caddy for auto-HTTPS) |
 | `FRONTEND_PORT` | No | `0.0.0.0:80` | Frontend port binding; set to `127.0.0.1:3000` behind a reverse proxy |
 | `DB_PATH` | No | `/data/solid-scheduler.db` | SQLite database file; set by the Docker image, keep it on the `/data` volume |
