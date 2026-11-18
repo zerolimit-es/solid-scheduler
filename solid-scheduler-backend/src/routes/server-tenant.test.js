@@ -389,4 +389,29 @@ describe('booking slug ownership', () => {
     assert.equal(avail.configured, false);
     assert.ok(avail.bookingSlug, 'the account already has a booking link');
   });
+
+  it("marks a slot taken in the organizer's own view when a booking overlaps it", async () => {
+    const pia = await signIn('https://pia.solidcommunity.net/profile/card#me');
+    const save = (eventDuration) => pia('/api/availability', {
+      method: 'PUT', body: JSON.stringify({ eventDuration, bookingSlug: 'pia-page', monday: day }),
+    });
+    assert.equal((await save(30)).status, 200);
+    assert.equal((await book('pia-page', '09:30')).status, 201); // 09:30–10:00
+    assert.equal((await save(45)).status, 200);
+
+    const own = await (await pia('/api/availability/slots?date=2030-09-02')).json();
+    const pub = await (await fetch(`${baseUrl}/api/public/pia-page/slots?date=2030-09-02`)).json();
+    const taken = (list) => list.slots.filter((x) => x.isBooked).map((x) => x.time);
+    assert.deepEqual(taken(own), ['09:00', '09:45'], '09:00–09:45 and 09:45–10:30 both overlap 09:30–10:00');
+    assert.deepEqual(own, pub, 'the same slots as the public page');
+  });
+
+  it("offers nothing on past days in the organizer's own view, and checks the date", async () => {
+    const pia = await signIn('https://pia.solidcommunity.net/profile/card#me');
+    const past = await (await pia('/api/availability/slots?date=2020-01-06')).json();
+    assert.deepEqual(past.slots, []);
+    assert.equal((await pia('/api/availability/slots?date=2030-02-30')).status, 400);
+    assert.equal((await pia('/api/availability/slots?date=tomorrow')).status, 400);
+  });
 });
+

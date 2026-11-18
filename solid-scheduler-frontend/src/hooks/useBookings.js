@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { api, generateLocalSlots } from '../services/api';
+import { api } from '../services/api';
 
 /**
  * @param {Object}  options
@@ -27,6 +27,8 @@ export default function useBookings({ user, publicSlug, availability, setView, s
   // Slots
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState(null);
+  const [slotsRetry, setSlotsRetry] = useState(0);
 
   // Form
   const [bookingForm, setBookingForm] = useState({ name: '', email: '', notes: '', recurrence: null });
@@ -63,11 +65,16 @@ export default function useBookings({ user, publicSlug, availability, setView, s
   // ── Fetch slots when date selected ─────────────────────────────────────
 
   useEffect(() => {
-    if (!selectedDate) { setSlots([]); return; }
-    if (!publicSlug && !user) { setSlots([]); return; }
+    if (!selectedDate) { setSlots([]); setSlotsError(null); return; }
+    if (!publicSlug && !user) { setSlots([]); setSlotsError(null); return; }
+
+    // A slower answer for a date picked earlier must not replace this one
+    let current = true;
 
     const fetchSlots = async () => {
       setSlotsLoading(true);
+      setSlotsError(null);
+      setSelectedSlot(null);
       try {
         const dateStr = [
           selectedDate.getFullYear(),
@@ -78,7 +85,8 @@ export default function useBookings({ user, publicSlug, availability, setView, s
         let fetchedSlots = [];
         if (publicSlug) {
           const res = await fetch(`/api/public/${publicSlug}/slots?date=${dateStr}`);
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.message || data.error || 'Request failed');
           fetchedSlots = (data.slots || []).map(s => ({ time: s.time, display: s.displayTime, booked: s.isBooked }));
         } else {
           const result = await api.availability.getSlots(dateStr, user.pods[0]);
@@ -89,6 +97,7 @@ export default function useBookings({ user, publicSlug, availability, setView, s
         // The server already leaves out times that have passed, judged in the
         // organizer's timezone. Filtering again by this browser's clock would
         // hide valid slots from visitors in timezones ahead of the organizer.
+        if (!current) return;
         setSlots(fetchedSlots);
 
         // Auto-advance: if no available slots and this was auto-selected, try next day
@@ -113,14 +122,20 @@ export default function useBookings({ user, publicSlug, availability, setView, s
         autoSelectStartRef.current = -1;
       } catch (err) {
         console.error('Failed to fetch slots:', err);
-        setSlots(generateLocalSlots(selectedDate, availability));
+        if (!current) return;
+        // Don't guess: times worked out here would leave out bookings and
+        // blocked time, and booking one would then be refused
+        setSlots([]);
+        setSlotsError("The available times couldn't be loaded.");
+        autoSelectStartRef.current = -1;
       } finally {
-        setSlotsLoading(false);
+        if (current) setSlotsLoading(false);
       }
     };
 
     fetchSlots();
-  }, [selectedDate, user, publicSlug, availability]);
+    return () => { current = false; };
+  }, [selectedDate, user, publicSlug, availability, slotsRetry]);
 
   // Wrap setSelectedDate so manual clicks disable auto-advance
   const selectDate = (date) => {
@@ -179,10 +194,10 @@ export default function useBookings({ user, publicSlug, availability, setView, s
         });
         result = await res.json();
         if (!res.ok) {
-          if (res.status === 429) {
-            throw new Error(result.message || 'This booking page has reached its monthly limit. Please try again next month.');
-          }
-          throw new Error(result.error || 'Booking failed');
+          // A validation error names what is wrong with each field
+          const fieldErrors = result.fields && typeof result.fields === 'object'
+            ? Object.values(result.fields).join(' ') : '';
+          throw new Error(fieldErrors || result.message || result.error || 'Booking failed');
         }
       } else {
         result = await api.bookings.create({
@@ -228,6 +243,8 @@ export default function useBookings({ user, publicSlug, availability, setView, s
     // Slots
     slots,
     slotsLoading,
+    slotsError,
+    retrySlots: () => setSlotsRetry((n) => n + 1),
     // Booking
     bookingForm,
     setBookingForm,

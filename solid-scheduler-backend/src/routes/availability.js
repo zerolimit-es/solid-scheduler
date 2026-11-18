@@ -4,13 +4,13 @@
  * Manage user availability settings stored in their Solid Pod:
  * - GET /api/availability - Get availability settings
  * - PUT /api/availability - Update availability settings
- * - GET /api/availability/slots - Get available time slots
+ * - GET /api/availability/slots - The organizer's own booking slots for a date
  */
 
 import { Router } from 'express';
 import { requireAuth, getAuthenticatedFetch } from '../middleware/auth.js';
-import { getAvailability as getLocalAvailability, saveAvailability as saveLocalAvailability, getBookedSlots } from '../cloud/models/bookings-db.js';
-import { getBlockedIntervals, isBlocked } from '../cloud/models/calendar-events-db.js';
+import { getAvailability as getLocalAvailability, saveAvailability as saveLocalAvailability } from '../cloud/models/bookings-db.js';
+import { isRealDate, slotsFor } from '../services/slots.js';
 import solidService from '../services/solid.js';
 import config from '../config/index.js';
 import { changeBookingSlug, SlugTakenError, getTenantBySlug } from '../cloud/models/database.js';
@@ -205,108 +205,27 @@ router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, r
 });
 
 /**
- * GET /api/availability/slots
- * Get available time slots for a specific date
- * Query params:
- *   - date: Date in YYYY-MM-DD format (required)
- *   - pod: Pod URL (optional, uses first pod)
+ * GET /api/availability/slots?date=YYYY-MM-DD
+ * The signed-in organizer's own booking slots for a date: the same list
+ * their public booking page offers (see services/slots.js), so a slot shown
+ * free here is one that can be booked. The saved hours are the ones in the
+ * database, which the dashboard brings in step with the Pod when it loads.
  */
-router.get('/slots', requireAuth(), async (req, res) => {
+router.get('/slots', requireAuth(), (req, res) => {
   try {
     const { date } = req.query;
-
     if (!date) {
-      return res.status(400).json({
-        error: 'Missing date',
-        message: 'Date parameter is required (YYYY-MM-DD format)',
-      });
+      return res.status(400).json({ error: 'Missing date', message: 'Date parameter is required (YYYY-MM-DD format)' });
     }
-
-    // Resolve availability — try Pod (source of truth), fall back to SQLite
+    if (!isRealDate(date)) {
+      return res.status(400).json({ error: 'Invalid date', message: 'date must be YYYY-MM-DD' });
+    }
     const slug = req.tenant?.booking_slug;
-    let avail = null;
-
-    try {
-      const fetch = await getAuthenticatedFetch(req.solidSession, req.user?.webId || req.session?.webId);
-      const pods = req.user?.pods?.length
-        ? req.user.pods
-        : await solidService.getUserPods(req.user.webId, fetch).catch(() => [req.session?.podUrl].filter(Boolean));
-      const podUrl = selectPod(req.query.pod, pods);
-      if (podUrl) {
-        const podAvail = await solidService.loadAvailability(podUrl, fetch);
-        if (podAvail) avail = podAvail;
-      }
-    } catch {
-      // Pod unavailable — fall back to SQLite below
-    }
-
-    if (!avail) {
-      avail = getLocalAvailability(slug);
-    }
-
-    if (!avail) {
-      return res.json({ date, slots: [], count: 0 });
-    }
-
-    // Determine which day of the week this date falls on
-    const [year, month, day] = date.split('-').map(Number);
-    const dateObj = new Date(year, month - 1, day);
-    const dayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-    const dayName = dayNames[dateObj.getDay()];
-
-    // Get day settings from nested (Pod) or flat (SQLite) structure
-    let daySettings = null;
-    if (avail.days && avail.days[dayName]) daySettings = avail.days[dayName];
-    else if (avail[dayName]) daySettings = avail[dayName];
-
-    if (!daySettings || !daySettings.enabled) {
-      return res.json({ date, slots: [], count: 0 });
-    }
-
-    // Generate slots using minute-based arithmetic (timezone-safe)
-    const startTime = daySettings.start || '09:00';
-    const endTime = daySettings.end || '17:00';
-    const [startH, startM] = startTime.split(':').map(Number);
-    const [endH, endM] = endTime.split(':').map(Number);
-    const slotStart = startH * 60 + startM;
-    const slotEnd = endH * 60 + endM;
-
-    // Filter past slots if today (in user's timezone)
-    const tz = avail.timezone || 'Europe/Paris';
-    const nowInTz = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
-    const todayStr = nowInTz.getFullYear() + '-' +
-      String(nowInTz.getMonth() + 1).padStart(2, '0') + '-' +
-      String(nowInTz.getDate()).padStart(2, '0');
-    const isToday = date === todayStr;
-    const nowMin = isToday ? nowInTz.getHours() * 60 + nowInTz.getMinutes() : 0;
-
-    // Check already-booked slots from SQLite + calendar event blocks
-    const booked = slug ? getBookedSlots(slug, date) : [];
-    const calBlocked = req.tenant?.id ? getBlockedIntervals(req.tenant.id, date) : [];
-    const bookedTimes = new Set(booked.map(b => b.start_time));
-
-    const duration = avail.eventDuration || 30;
-    const slots = [];
-    for (let m = slotStart; m + duration <= slotEnd; m += duration) {
-      if (isToday && m <= nowMin + 15) continue;
-      const hour = Math.floor(m / 60);
-      const min = m % 60;
-      const time = `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
-      const key = `${date} ${time}`;
-      const isBooked = bookedTimes.has(key) || isBlocked(calBlocked, m, m + duration);
-      const h12 = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const displayTime = `${h12}:${min.toString().padStart(2, '0')} ${ampm}`;
-      slots.push({ time, displayTime, isBooked });
-    }
-
-    res.json({ date, slots, count: slots.filter(s => !s.isBooked).length });
+    if (!slug) return res.json({ date, slots: [], count: 0 });
+    res.json(slotsFor(slug, date, req.tenant.id));
   } catch (error) {
     console.error('Get slots error:', error);
-    res.status(error instanceof PodNotAllowedError ? 400 : 500).json({
-      error: 'Failed to get available slots',
-      message: safeMessage(error),
-    });
+    res.status(500).json({ error: 'Failed to get available slots', message: safeMessage(error) });
   }
 });
 

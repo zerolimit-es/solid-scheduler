@@ -328,6 +328,10 @@ export default function SolidScheduler() {
               setSelectedSlot={booking.setSelectedSlot}
               slots={booking.slots}
               slotsLoading={booking.slotsLoading}
+            slotsError={booking.slotsError}
+            retrySlots={booking.retrySlots}
+              slotsError={booking.slotsError}
+              retrySlots={booking.retrySlots}
               setView={setView}
             />
           )}
@@ -427,6 +431,8 @@ export default function SolidScheduler() {
             setSelectedSlot={booking.setSelectedSlot}
             slots={booking.slots}
             slotsLoading={booking.slotsLoading}
+            slotsError={booking.slotsError}
+            retrySlots={booking.retrySlots}
             setView={setView}
           />
         )}
