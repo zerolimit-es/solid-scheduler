@@ -43,8 +43,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Run tests
-        run: npm test
+      # Fails if line, branch or function coverage drops below the minimums
+      # in package.json ("test:coverage")
+      - name: Run tests with coverage
+        run: npm run test:coverage
 
   # ===========================================================================
   # Frontend
@@ -72,8 +74,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Run tests
-        run: npm test
+      # Fails if coverage drops below the minimums in vite.config.js
+      - name: Run tests with coverage
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build

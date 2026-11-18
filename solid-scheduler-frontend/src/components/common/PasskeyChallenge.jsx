@@ -11,10 +11,10 @@ export default function PasskeyChallenge({ onSuccess }) {
   const handleVerify = async () => {
     setVerifying(true);
     setError(null);
+    // Timeout the auth-options fetch to prevent hanging requests from
+    // saturating the connection pool and freezing the browser.
+    const controller = new AbortController();
     try {
-      // Timeout the auth-options fetch to prevent hanging requests from
-      // saturating the connection pool and freezing the browser.
-      const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
 
       let options;
@@ -28,7 +28,8 @@ export default function PasskeyChallenge({ onSuccess }) {
       await api.passkey.authVerify(credential);
       onSuccess();
     } catch (err) {
-      if (err.name === 'AbortError') {
+      // The API layer rewraps fetch errors, so ask the signal, not the error
+      if (controller.signal.aborted) {
         setError('Request timed out — please try again.');
       } else if (err.name === 'NotAllowedError') {
         setError('Passkey verification was cancelled or timed out.');

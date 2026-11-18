@@ -1,0 +1,49 @@
+name: Dependency audit
+
+# Checks the dependencies for known vulnerabilities on every change, and
+# weekly, since new advisories appear even when the code doesn't change.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '17 6 * * 1'   # Mondays, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      # What actually runs: the server's packages and the app visitors load.
+      # A high or critical advisory here fails the check.
+      - name: Backend runtime dependencies
+        working-directory: solid-scheduler-backend
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Frontend runtime dependencies
+        working-directory: solid-scheduler-frontend
+        run: npm audit --omit=dev --audit-level=high
+
+      # Build and test tools never reach visitors. Their advisories are listed
+      # here without failing the check, so one with no fix yet doesn't block
+      # every change; Dependabot proposes the fix once there is one.
+      - name: Build and test tools (report only)
+        continue-on-error: true
+        run: |
+          status=0
+          (cd solid-scheduler-backend && npm audit) || status=1
+          (cd solid-scheduler-frontend && npm audit) || status=1
+          exit $status
