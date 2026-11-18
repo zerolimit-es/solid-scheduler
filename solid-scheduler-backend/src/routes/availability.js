@@ -15,6 +15,7 @@ import solidService from '../services/solid.js';
 import config from '../config/index.js';
 import { changeBookingSlug, SlugTakenError, getTenantBySlug, getDb } from '../cloud/models/database.js';
 import { convertAccountTimes } from '../cloud/services/timezone-change.js';
+import { syncBookingsToPod, syncCalendarEventsToPod } from '../cloud/services/pod-sync.js';
 import { isValidTimeZone } from '../utils/tz.js';
 import { normalizeSlug } from '../cloud/services/tenants.js';
 import { safeMessage } from '../utils/errorResponse.js';
@@ -190,11 +191,11 @@ router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, r
     }
   }
 
+  let converted = null;
   try {
     // A new timezone: rewrite stored bookings and blocked time so they keep
     // their moment, in the same transaction as the new setting
     const newTimezone = availability.timezone;
-    let converted = null;
     getDb().transaction(() => {
       if (slug && isValidTimeZone(newTimezone) && newTimezone !== previousTimezone) {
         converted = convertAccountTimes({ slug, tenantId: req.tenant?.id, from: previousTimezone, to: newTimezone });
@@ -220,6 +221,15 @@ router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, r
       await solidService.saveAvailability(podUrl, availability, fetch);
       podSaved = true;
       console.log('[Availability] ✓ Saved to Pod');
+      // Repeat rules a timezone change moved to other days: update the Pod
+      // copies now (in the background) rather than at the next sign-in
+      if (converted && slug) {
+        const tz = availability.timezone;
+        (async () => {
+          await syncBookingsToPod(podUrl, fetch, slug, tz);
+          if (req.tenant?.id) await syncCalendarEventsToPod(podUrl, fetch, tz, req.tenant.id);
+        })().catch((err) => console.warn('[Availability] Pod rule update deferred to next login:', err.message));
+      }
     }
   } catch (podErr) {
     console.log('[Availability] Pod save failed (will sync on next login):', podErr.message);

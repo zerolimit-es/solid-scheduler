@@ -75,6 +75,14 @@ export function initBookingsTable() {
   } catch (e) {
     // Column already exists
   }
+  // A recurring booking already in the Pod whose repeat rule changed here
+  // (a timezone change moved it to other weekdays): the Pod copy's rule is
+  // updated at the next sync.
+  try {
+    db.exec(`ALTER TABLE bookings ADD COLUMN pod_rule_pending INTEGER DEFAULT 0`);
+  } catch (e) {
+    // Column already exists
+  }
 }
 
 export function createBooking(booking) {
@@ -197,6 +205,22 @@ export function markPodCancelPending(id) {
 
 export function clearPodCancelPending(id) {
   getDb().prepare(`UPDATE bookings SET pod_cancel_pending = 0 WHERE id = ?`).run(id);
+}
+
+/** Recurring bookings of one page whose Pod copy has an outdated repeat rule. Slug required. */
+export function getPendingPodRuleChanges(slug) {
+  if (typeof slug !== 'string' || slug === '') {
+    throw new Error('getPendingPodRuleChanges requires a booking slug');
+  }
+  return getDb().prepare(
+    `SELECT id, title, recurrence, pod_url FROM bookings
+     WHERE slug = ? AND pod_rule_pending = 1 AND recurrence IS NOT NULL AND recurrence != ''
+       AND pod_url IS NOT NULL AND pod_url != ''`
+  ).all(slug);
+}
+
+export function clearPodRulePending(id) {
+  getDb().prepare(`UPDATE bookings SET pod_rule_pending = 0 WHERE id = ?`).run(id);
 }
 
 /** Cancelled bookings of one page whose Pod copy is still confirmed. Slug required, as for syncing. */

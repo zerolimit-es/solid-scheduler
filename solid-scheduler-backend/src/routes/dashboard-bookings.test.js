@@ -85,6 +85,7 @@ before(async () => {
   const { ensureTenant } = await import('../cloud/services/tenants.js');
   const express = (await import('express')).default;
   const bookingsRoutes = (await import('./bookings.js')).default;
+  const availabilityRoutes = (await import('./availability.js')).default;
 
   sqlite = getDb();
   initBookingsTable();
@@ -116,6 +117,7 @@ before(async () => {
     next();
   });
   app.use('/api/bookings', bookingsRoutes);
+  app.use('/api/availability', availabilityRoutes);
   await new Promise((resolve) => { server = app.listen(0, resolve); });
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
@@ -279,6 +281,31 @@ describe('recurring bookings', () => {
     saveAvailability({ eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma' }, 'uma');
     const solid = (await import('../services/solid.js')).default;
     await solid.saveAvailability(POD, { eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma', email: 'uma@example.com', days: {} }, pod.fetch);
+  });
+
+  it("updates the Pod copy's repeat rule when a timezone change moves the series to another weekday", async () => {
+    // Every Monday at 20:00 in Paris: Tuesday 03:00 in Tokyo
+    const res = await book({ date: MONDAY, time: '20:00', recurrence: { frequency: 'WEEKLY', byDay: ['MO'] } });
+    const { booking } = await res.json();
+    assert.equal(res.status, 201);
+    const local = () => sqlite.prepare('SELECT recurrence, pod_url, pod_rule_pending FROM bookings WHERE id = ?').get(booking.id);
+    assert.ok(local().pod_url, 'saved to the Pod');
+
+    pod.writes.length = 0;
+    const save = await fetch(`${baseUrl}/api/availability`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventDuration: 30, timezone: 'Asia/Tokyo', name: 'Uma', bookingSlug: 'uma', monday: { enabled: true, start: '09:00', end: '17:00' } }),
+    });
+    assert.equal(save.status, 200);
+    assert.match(local().recurrence, /BYDAY=TU/);
+
+    // The Pod copy is updated in the background, in place
+    for (let i = 0; i < 50 && local().pod_rule_pending; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(local().pod_rule_pending, 0);
+    const ruleWrite = pod.writes.find((w) => w.url === local().pod_url);
+    assert.ok(ruleWrite, 'the Pod copy was written');
+    assert.match(ruleWrite.body, /BYDAY=TU/);
+    assert.doesNotMatch(ruleWrite.method, /DELETE/);
   });
 
   it('takes the slot on every occurrence, on the public page and for the organizer', async () => {
