@@ -9,7 +9,7 @@
 
 import { Router } from 'express';
 import { requireAuth, getAuthenticatedFetch } from '../middleware/auth.js';
-import { getAvailability as getLocalAvailability, saveAvailability as saveLocalAvailability } from '../cloud/models/bookings-db.js';
+import { getAvailability as getLocalAvailability, saveAvailability as saveLocalAvailability, setAvailabilityPodPending } from '../cloud/models/bookings-db.js';
 import { isRealDate, slotsFor, DEFAULT_TIMEZONE } from '../services/slots.js';
 import solidService from '../services/solid.js';
 import config from '../config/index.js';
@@ -33,7 +33,19 @@ router.get('/', requireAuth(), async (req, res) => {
   try {
     const fetch = await getAuthenticatedFetch(req.solidSession, req.user?.webId || req.session?.webId);
     const pods = req.user?.pods?.length ? req.user.pods : await solidService.getUserPods(req.user.webId, fetch).catch(() => [req.session?.podUrl].filter(Boolean));
-    if (pods.length > 0) {
+    const pendingLocal = getLocalAvailability(req.tenant?.booking_slug);
+    if (pods.length > 0 && pendingLocal?.podSyncPending) {
+      // The last save didn't reach the Pod: the local copy is newer. Try the
+      // Pod again, and answer from the local copy either way (below).
+      const podUrl = selectPod(req.query.pod, pods);
+      try {
+        await solidService.saveAvailability(podUrl, pendingLocal, fetch);
+        setAvailabilityPodPending(req.tenant.booking_slug, false);
+        console.log('[Availability] ✓ Saved pending settings to the Pod');
+      } catch (err) {
+        console.log('[Availability] Pod still refuses the settings:', err.message);
+      }
+    } else if (pods.length > 0) {
       const podUrl = selectPod(req.query.pod, pods);
       const availability = await solidService.loadAvailability(podUrl, fetch);
       if (availability) {
@@ -113,6 +125,7 @@ router.get('/', requireAuth(), async (req, res) => {
         if (!local[d]) local[d] = { enabled: false, start: '09:00', end: '17:00' };
       }
       if (req.tenant?.booking_slug) local.bookingSlug = req.tenant.booking_slug;
+      delete local.podSyncPending;
       return res.json({ configured: true, podUrl: 'local', availability: local, source: 'sqlite' });
     }
     return res.json({
@@ -200,7 +213,8 @@ router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, r
       if (slug && isValidTimeZone(newTimezone) && newTimezone !== previousTimezone) {
         converted = convertAccountTimes({ slug, tenantId: req.tenant?.id, from: previousTimezone, to: newTimezone });
       }
-      saveLocalAvailability(availability, slug);
+      // Not in the Pod yet: cleared below once the Pod has it
+      saveLocalAvailability({ ...availability, podSyncPending: true }, slug);
     })();
     if (converted) {
       console.log(`[Availability] Timezone ${previousTimezone} → ${newTimezone}: moved ${converted.bookings} booking(s) and ${converted.calendarEvents} blocked time(s)`);
@@ -220,6 +234,7 @@ router.put('/', requireAuth(), validate(updateAvailabilitySchema), async (req, r
       const podUrl = selectPod(req.query.pod, pods);
       await solidService.saveAvailability(podUrl, availability, fetch);
       podSaved = true;
+      if (slug) setAvailabilityPodPending(slug, false);
       console.log('[Availability] ✓ Saved to Pod');
       // Repeat rules a timezone change moved to other days: update the Pod
       // copies now (in the background) rather than at the next sign-in

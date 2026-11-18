@@ -404,6 +404,19 @@ export function saveAvailability(data, slug) {
 }
 
 /**
+ * Mark whether a page's saved settings are still waiting to reach the Pod.
+ * While they are, the local copy is the newer one: reads keep it and retry
+ * the Pod, instead of copying the Pod's older settings back.
+ */
+export function setAvailabilityPodPending(slug, pending) {
+  const current = getAvailability(slug);
+  if (!current) return false;
+  if (pending) current.podSyncPending = true;
+  else delete current.podSyncPending;
+  return saveAvailability(current, slug);
+}
+
+/**
  * Booking counts for one booking page, from the local table.
  *
  * "This week" and "this month" count meetings that take place in the

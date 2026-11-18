@@ -285,6 +285,31 @@ describe('recurring bookings', () => {
     await solid.saveAvailability(POD, { eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma', email: 'uma@example.com', days: {} }, pod.fetch);
   });
 
+  it("keeps settings the Pod refused, and saves them there once it accepts them", async () => {
+    const save = (organizerName) => fetch(`${baseUrl}/api/availability`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventDuration: 30, timezone: 'Europe/Paris', bookingSlug: 'uma', organizerName }),
+    });
+    const load = async () => (await (await fetch(`${baseUrl}/api/availability`)).json()).availability;
+    const solid = (await import('../services/solid.js')).default;
+
+    // The Pod refuses writes but can still be read (it has "Uma")
+    pod.readOnly = true;
+    assert.equal((await (await save('Uma Renamed')).json()).source, 'sqlite');
+    assert.equal((await load()).organizerName, 'Uma Renamed', "the Pod's older name doesn't come back");
+    assert.equal((await solid.loadAvailability(POD, pod.fetch)).name, 'Uma');
+
+    // Once the Pod accepts writes, the next load saves the settings there
+    // (the fake Pod records updates without applying them, so check the write)
+    pod.readOnly = false;
+    pod.writes.length = 0;
+    assert.equal((await load()).organizerName, 'Uma Renamed');
+    assert.ok(pod.writes.some((w) => w.url.endsWith('availability.ttl') && w.body.includes('Uma Renamed')),
+      'the new name was written to the Pod');
+    const { getAvailability } = await import('../cloud/models/bookings-db.js');
+    assert.equal(getAvailability('uma').podSyncPending, undefined, 'no longer waiting for the Pod');
+  });
+
   it('keeps the time taken while a dashboard booking is being saved to the Pod', async () => {
     const { saveAvailability } = await import('../cloud/models/bookings-db.js');
     saveAvailability({ eventDuration: 30, timezone: 'Europe/Paris', name: 'Uma', monday: { enabled: true, start: '09:00', end: '17:00' } }, 'uma');

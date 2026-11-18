@@ -10,7 +10,7 @@ import { verifyWebIdIssuer } from '@zerolimit/packages/solid-auth/core';
 import { hostPolicy } from '../services/host-policy.js';
 import { sessionManager, solidFetchMap } from '../middleware/auth.js';
 import { syncBookingsToPod, syncCancellationsToPod, syncCalendarEventsToPod, importPodEventsToSQLite } from '../cloud/services/pod-sync.js';
-import { getAvailability as getLocalAvailability } from '../cloud/models/bookings-db.js';
+import { getAvailability as getLocalAvailability, setAvailabilityPodPending } from '../cloud/models/bookings-db.js';
 import { getTenantByWebId, getTenantBySlug, updateBookingSlug } from '../cloud/models/database.js';
 import { extractSlug } from '../utils/webid.js';
 import { ensureTenant } from '../cloud/services/tenants.js';
@@ -81,6 +81,7 @@ export function runPostLoginSync({ webId, podUrl, authenticatedFetch }) {
             }
           }
           await solidService.saveAvailability(podUrl, localAvail, authenticatedFetch);
+          setAvailabilityPodPending(tenant.booking_slug, false);
           console.log('[Auth] Post-login availability synced to Pod');
         }
       }
