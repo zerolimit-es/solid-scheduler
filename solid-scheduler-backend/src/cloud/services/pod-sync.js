@@ -23,6 +23,7 @@ import { getUnsyncedCalendarEvents, markCalendarEventSynced } from '../models/ca
 import solidService from '../../services/solid.js';
 import { organizerIdentity } from '../../utils/organizer.js';
 import { parseRRule as parseRecurrence } from '../../utils/recurrence.js';
+import { validRRule } from '../../utils/rrule.js';
 
 /**
  * Convert a naive local time (from SQLite) to a proper UTC ISO string.
@@ -309,6 +310,13 @@ export async function importPodEventsToSQLite(podUrl, fetch, tenantId, timezone 
         // Check if already in SQLite by UUID
         const existing = pe.id ? getCalendarEvent(tenantId, pe.id) : null;
         if (existing) continue;
+
+        // Pod data is not checked on the way in, so check the repeat rule
+        // as the app does for one typed in: it goes into calendar files
+        if (pe.recurrence && !validRRule(pe.recurrence)) {
+          console.warn('[Pod Import] Skipped a calendar event with an unusable repeat rule');
+          continue;
+        }
 
         // Convert UTC ISO times from Pod to naive local times for SQLite
         const startLocal = utcISOToNaiveLocal(pe.start, timezone);

@@ -16,22 +16,38 @@ import { runPostLoginSync } from './auth.js';
 
 // ── Derive RP config ──
 
-function getRpId() {
+// Passkeys belong to the site the browser is on: the frontend's hostname,
+// or a parent domain of it. Earlier versions took the backend's hostname with
+// any "app." prefix removed. Passkeys registered that way keep working: that
+// value is kept whenever it was valid for the frontend (a passkey could only
+// have been registered then).
+export function passkeySiteFor(frontendUrl, baseUrl) {
+  let frontendHost;
   try {
-    const url = new URL(config.baseUrl);
-    return url.hostname === 'localhost' ? 'localhost' : url.hostname.replace(/^app\./, '');
+    frontendHost = new URL(frontendUrl).hostname;
   } catch {
     return 'localhost';
   }
+  try {
+    const host = new URL(baseUrl).hostname;
+    const legacy = host === 'localhost' ? 'localhost' : host.replace(/^app\./, '');
+    if (frontendHost === legacy || frontendHost.endsWith(`.${legacy}`)) return legacy;
+  } catch {
+    // no usable backend URL: use the frontend's hostname
+  }
+  return frontendHost;
+}
+
+function getRpId() {
+  return passkeySiteFor(config.frontendUrl, config.baseUrl);
 }
 
 function getAllowedOrigins() {
-  const origins = [config.frontendUrl];
-  if (config.domain) {
-    const proto = config.frontendUrl.startsWith('https') ? 'https' : 'http';
-    origins.push(`${proto}://calendar.${config.domain}`);
+  try {
+    return [new URL(config.frontendUrl).origin];
+  } catch {
+    return [config.frontendUrl];
   }
-  return origins;
 }
 
 // ── Challenge store (Redis with in-memory fallback) ──
@@ -197,12 +213,27 @@ export function requireRecentPasskey(req, res, next) {
   });
 }
 
+/**
+ * The name given to a new passkey: text only, without control characters,
+ * at most 64 characters. Anything else gets the router's default name.
+ */
+export const MAX_DEVICE_NAME = 64;
+export function cleanDeviceName(req, _res, next) {
+  if (req.body && typeof req.body === 'object' && 'deviceName' in req.body) {
+    const raw = req.body.deviceName;
+    // eslint-disable-next-line no-control-regex
+    const name = typeof raw === 'string' ? raw.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, MAX_DEVICE_NAME) : '';
+    req.body.deviceName = name || undefined;
+  }
+  next();
+}
+
 const router = Router();
 // The passkey router itself refuses a credential that is not registered to
 // the account being verified.
 router.post('/auth-verify', recordPasskeyVerification);
 router.get('/register-options', requireRecentPasskey);
-router.post('/register-verify', requireRecentPasskey);
+router.post('/register-verify', requireRecentPasskey, cleanDeviceName);
 router.delete('/:id', requireRecentPasskey);
 router.use(passkeyRouter);
 

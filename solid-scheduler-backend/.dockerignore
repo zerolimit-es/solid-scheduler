@@ -29,6 +29,7 @@ docs/
 test/
 tests/
 __tests__
+**/*.test.js
 coverage/
 .nyc_output
 

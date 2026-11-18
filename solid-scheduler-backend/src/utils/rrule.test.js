@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { expandRRule } from './rrule.js';
+import { expandRRule, validRRule } from './rrule.js';
 
 /** Occurrences as naive local "YYYY-MM-DD HH:MM", the form stored times use. */
 const expand = (...args) => expandRRule(...args).map((d) =>
@@ -41,5 +41,16 @@ describe('expandRRule (blocked time)', () => {
   it('defaults to weekly when the rule names no frequency, as before', () => {
     assert.deepEqual(expand('INTERVAL=1', '2030-01-07 12:00', '2030-01-07 00:00', '2030-01-15 00:00'),
       ['2030-01-07 12:00', '2030-01-14 12:00']);
+  });
+});
+
+describe('validRRule', () => {
+  it('accepts a repeat rule', () => {
+    assert.equal(validRRule('FREQ=WEEKLY;BYDAY=MO,WE'), true);
+  });
+  it('refuses one without FREQ, with line breaks, or too long', () => {
+    assert.equal(validRRule('BYDAY=MO'), false);
+    assert.equal(validRRule('FREQ=WEEKLY\r\nATTENDEE:mailto:x@example.com'), false);
+    assert.equal(validRRule(`FREQ=WEEKLY;${'BYDAY=MO;'.repeat(40)}`), false);
   });
 });
