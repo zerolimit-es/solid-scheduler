@@ -26,7 +26,7 @@
     "@inrupt/solid-client-authn-node": "^5.0.3",
     "@inrupt/vocab-common-rdf": "^1.0.5",
     "@simplewebauthn/server": "^14.0.3",
-    "@zerolimit/packages": "git+https://github.com/zerolimit-es/solid-scheduling-tools.git#a6d27e508d50b593bd036889720df3f62c37649c",
+    "@zerolimit/packages": "git+https://github.com/zerolimit-es/solid-scheduling-tools.git#018dd85fc69e2440d082aa110176dc19f67bdde0",
     "better-sqlite3-multiple-ciphers": "^13.0.3",
     "cookie-session": "^2.1.1",
     "cors": "^2.8.6",

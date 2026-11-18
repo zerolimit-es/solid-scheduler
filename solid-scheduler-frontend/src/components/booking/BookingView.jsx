@@ -1,4 +1,5 @@
 import React from 'react';
+import { organizerToday } from '../../utils/organizerDate';
 import { CalendarIcon, ClockIcon, ChevronLeftIcon, ChevronRightIcon, LoaderIcon } from '../common/Icons';
 
 export default function BookingView({
@@ -11,8 +12,7 @@ export default function BookingView({
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const prevDays = new Date(year, month, 0).getDate();
-  const today = new Date();
-  today.setHours(0,0,0,0);
+  const today = organizerToday(availability?.timezone);
 
   const isAvailableDay = (date) => {
     if (date < today) return false;

@@ -343,6 +343,7 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
       return `${h12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
     };
     const startTimeDisplay = fmt12(startNaive);
+    const durationMinutes = Math.round((endDt - startDt) / 60000);
     const endTimeDisplay = fmt12(endNaive);
 
     // -----------------------------------------------------------------------
@@ -426,6 +427,7 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
           date: dateDisplay,
           startTime: startTimeDisplay,
           endTime: endTimeDisplay,
+          duration: durationMinutes,
           start: booking.start,
           end: booking.end,
           organizer: booking.organizer,
@@ -529,6 +531,7 @@ router.post('/', requireAuth(), validateCreateBooking, async (req, res) => {
         date: dateDisplay,
         startTime: startTimeDisplay,
         endTime: endTimeDisplay,
+        duration: durationMinutes,
         start: startDt.toISOString(),
         end: endDt.toISOString(),
         attendee,

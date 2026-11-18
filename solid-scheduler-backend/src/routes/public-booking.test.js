@@ -224,6 +224,7 @@ describe('dashboard bookings and the public page share one calendar', () => {
     assert.equal(res.status, 201, JSON.stringify(body));
     assert.equal(body.booking.startTime, '9:30 AM');
     assert.equal(body.booking.endTime, '10:00 AM');
+    assert.equal(body.booking.duration, 30, 'the meeting length the confirmation shows');
     assert.equal(body.booking.date, 'Monday, September 16, 2030');
     // 09:30 in Paris (UTC+2 in September), whatever the server's own timezone
     assert.equal(body.booking.start, '2030-09-16T07:30:00.000Z');

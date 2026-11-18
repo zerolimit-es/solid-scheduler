@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../services/api';
+import { organizerToday } from '../utils/organizerDate';
 
 /**
  * @param {Object}  options
@@ -47,8 +48,7 @@ export default function useBookings({ user, publicSlug, availability, setView, s
     initialSelectDone.current = true;
 
     const dayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-    const today = new Date();
-    today.setHours(0,0,0,0);
+    const today = organizerToday(availability.timezone);
     // Search up to 90 days ahead for the first enabled day
     for (let i = 0; i < 90; i++) {
       const candidate = new Date(today);
@@ -103,7 +103,7 @@ export default function useBookings({ user, publicSlug, availability, setView, s
         // Auto-advance: if no available slots and this was auto-selected, try next day
         const available = fetchedSlots.filter(s => !s.booked);
         if (available.length === 0 && autoSelectStartRef.current >= 0) {
-          const today = new Date(); today.setHours(0,0,0,0);
+          const today = organizerToday(availability?.timezone);
           const daysDiff = Math.round((selectedDate - today) / 86400000);
           autoSelectStartRef.current = daysDiff + 1;
           // Re-trigger auto-select by bumping availability dep (use a state toggle)
@@ -210,7 +210,15 @@ export default function useBookings({ user, publicSlug, availability, setView, s
         }, user.pods[0]);
       }
 
-      setBookedEvent(result.booking);
+      // The calendar file: the one the server just made, or for a booking
+      // saved straight to the Pod, the signed-in download
+      const booked = { ...result.booking };
+      if (result.icsContent) {
+        booked.icsUrl = URL.createObjectURL(new Blob([result.icsContent], { type: 'text/calendar' }));
+      } else if (!publicSlug && booked.id) {
+        booked.icsUrl = api.bookings.getIcsUrl(booked.id, user.pods[0]);
+      }
+      setBookedEvent(booked);
       setView('confirmation');
 
       if (onBookingCreated) onBookingCreated();

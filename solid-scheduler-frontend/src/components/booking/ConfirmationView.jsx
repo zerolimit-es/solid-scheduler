@@ -2,6 +2,11 @@ import React from 'react';
 import { CheckIcon, DownloadIcon, CalendarIcon } from '../common/Icons';
 
 export default function ConfirmationView({ bookedEvent, setView, setBookedEvent, setSelectedDate, setSelectedSlot, setBookingForm, isPublic }) {
+  // Free a calendar file made in the browser once it is no longer shown
+  React.useEffect(() => () => {
+    if (bookedEvent?.icsUrl?.startsWith('blob:')) URL.revokeObjectURL(bookedEvent.icsUrl);
+  }, [bookedEvent]);
+
   const handleBookAnother = () => {
     setBookedEvent(null);
     setSelectedDate(null);
@@ -65,6 +70,7 @@ export default function ConfirmationView({ bookedEvent, setView, setBookedEvent,
         <a
           className="flex items-center justify-center gap-2 w-full py-3.5 bg-[rgba(var(--user-accent-rgb),0.1)] border border-[rgba(var(--user-accent-rgb),0.3)] rounded-lg text-[var(--user-accent)] text-sm font-medium no-underline cursor-pointer transition-all duration-200 mb-3.5"
           href={bookedEvent.icsUrl}
+          download={bookedEvent.icsUrl.startsWith('blob:') ? 'meeting.ics' : undefined}
         >
           <DownloadIcon /> Download .ics
         </a>
