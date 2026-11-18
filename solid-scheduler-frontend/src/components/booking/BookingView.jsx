@@ -3,7 +3,7 @@ import { CalendarIcon, ClockIcon, ChevronLeftIcon, ChevronRightIcon, LoaderIcon 
 
 export default function BookingView({
   availability, currentMonth, setCurrentMonth, selectedDate, setSelectedDate,
-  selectedSlot, setSelectedSlot, slots, slotsLoading, setView,
+  selectedSlot, setSelectedSlot, slots, slotsLoading, slotsError, retrySlots, setView,
 }) {
   const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const year = currentMonth.getFullYear();
@@ -120,6 +120,11 @@ export default function BookingView({
               <div className="flex items-center justify-center gap-3 p-8 text-[var(--user-text-muted)]">
                 <LoaderIcon className="w-5 h-5 text-[var(--color-info)]" />
                 <span>Loading slots...</span>
+              </div>
+            ) : slotsError ? (
+              <div role="alert" className="text-center p-8 text-sm text-[var(--user-text-muted)]">
+                <p className="m-0 mb-3">{slotsError}</p>
+                <button type="button" className="btn" onClick={retrySlots}>Try again</button>
               </div>
             ) : slots.length === 0 ? (
               <div className="text-center p-8 text-[var(--user-text-muted)] text-sm">No available slots for this day</div>

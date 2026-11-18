@@ -198,38 +198,3 @@ export const RECURRENCE_PRESETS = [
   { id: 'monthly', label: 'Monthly', value: { frequency: 'MONTHLY' } },
   { id: 'yearly', label: 'Yearly', value: { frequency: 'YEARLY' } },
 ];
-
-// ── Local Slot Generation ────────────────────────────────────────────────────
-
-export function generateLocalSlots(date, availability) {
-  if (!availability) return [];
-  const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-  const dayName = dayNames[date.getDay()];
-  const daySettings = availability.days?.[dayName] || availability[dayName];
-  if (!daySettings?.enabled) return [];
-
-  const [startHour, startMin] = daySettings.start.split(":").map(Number);
-  const [endHour, endMin] = daySettings.end.split(":").map(Number);
-  const duration = availability.eventDuration || 30;
-
-  const now = new Date();
-  const isToday = date.getFullYear() === now.getFullYear() &&
-                  date.getMonth() === now.getMonth() &&
-                  date.getDate() === now.getDate();
-  const nowMinutes = isToday ? now.getHours() * 60 + now.getMinutes() : 0;
-
-  const slots = [];
-  for (let h = startHour; h < endHour || (h === endHour && 0 < endMin); h++) {
-    for (let m = (h === startHour ? startMin : 0); m < 60; m += duration) {
-      if (h * 60 + m + duration > endHour * 60 + endMin) break;
-      if (isToday && h * 60 + m <= nowMinutes + 15) continue;
-      const time = h.toString().padStart(2, "0") + ":" + m.toString().padStart(2, "0");
-      slots.push({
-        time,
-        display: new Date(2024, 0, 1, h, m).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-        booked: false,
-      });
-    }
-  }
-  return slots;
-}
