@@ -30,7 +30,7 @@ const normalizeSlug = (value) =>
 const EMAIL_STATUS_TEXT = {
   verified: 'Confirmed. You get an email here when someone books or cancels.',
   pending: "We sent a link to this address. Booking emails start once you click it.",
-  unconfirmed: 'Not confirmed yet: no booking emails are sent here until you click the link we send.',
+  unconfirmed: 'Not confirmed yet: booking emails are sent here only once you confirm it.',
   'not-sent': "The confirmation email couldn't be sent. Check the server's email settings, then send it again.",
 };
 
@@ -134,7 +134,10 @@ export default function SettingsCard({ availability, onSave, emailVerification =
             <p className={hintCls}>
               <button type="button" className="bg-transparent border-none p-0 text-[var(--color-primary-light)] underline cursor-pointer text-[0.6875rem]"
                 onClick={handleResend} disabled={resend.busy}>
-                {resend.busy ? 'Sending…' : 'Send the link again'}
+                {resend.busy
+                  ? 'Sending…'
+                  // No link went out yet for an address that is only "unconfirmed"
+                  : emailVerification === 'unconfirmed' ? 'Send a confirmation link' : 'Send the link again'}
               </button>
               {resend.message && <span className="ml-2">{resend.message}</span>}
             </p>
